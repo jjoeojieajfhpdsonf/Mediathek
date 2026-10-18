@@ -14,6 +14,9 @@ test("release names become titles", () => {
 	assert.strictEqual(cleanName("Dune.Part.Two.2024.1080p.BluRay.x265-GRP"), "Dune Part Two");
 	assert.strictEqual(cleanName("The.Bear.S04E03.1080p.WEB.h264-ETHEL"), "The Bear");
 	assert.strictEqual(cleanName("Some Movie 1080p WEB"), "Some Movie");
+	assert.strictEqual(cleanName("Jurassic World Rebirth (2025) (1080p DS4K BluRay x265 10-bit HDR AAC 7.1) [WeSLeY].mkv"), "Jurassic World Rebirth");
+	assert.strictEqual(cleanName("Eojjeolsuga Eobsda (2025) [1080p] [BluRay] [5.1] [YTS.BZ]"), "Eojjeolsuga Eobsda");
+	assert.strictEqual(cleanName("2001.A.Space.Odyssey.1968.1080p.BluRay"), "2001 A Space Odyssey");
 });
 
 test("profile names carry quality and language", () => {

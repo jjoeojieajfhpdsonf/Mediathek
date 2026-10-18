@@ -204,6 +204,10 @@ function drawOverview() {
 	// second copies of finished torrents that have seeded enough
 	const dupDone = torrents().filter((t) => t.copy && t.item && t.done >= 1 && t.ratio >= 1);
 	if (dupDone.length) sugg.push({ t: "Doppelte Kopien", s: `${dupDone.length} ${dupDone.length === 1 ? "Torrent ist" : "Torrents sind"} fertig geteilt (Ratio ≥ 1) – die Kopie in Downloads kann weg, die Titel bleiben.`, n: dupDone.reduce((a, t) => a + t.size, 0), b: "Aufräumen", go: () => dupFlow(dupDone) });
+	// finished torrents whose title is gone from Radarr and Sonarr: only taking space
+	const arrsOn = S.state.services.radarr || S.state.services.sonarr;
+	const orphans = arrsOn ? torrents().filter((t) => !t.item && t.done >= 1 && (!t.category || /radarr|sonarr|tv|movie|film|serie/i.test(t.category))) : [];
+	if (orphans.length) sugg.push({ t: orphans.length === 1 ? "1 verwaister Torrent" : `${orphans.length} verwaiste Torrents`, s: `${orphans.slice(0, 3).map((t) => t.title).join(", ")}${orphans.length > 3 ? " …" : ""} – nicht mehr in Radarr oder Sonarr, belegt nur noch Platz.`, n: orphans.reduce((a, t) => a + t.size, 0), b: "Entfernen", go: () => orphanFlow(orphans) });
 	const seenAll = items().filter((x) => x.watched >= 1);
 	if (seenAll.length) sugg.push({ t: seenAll.length === 1 ? "1 gesehener Titel" : `${seenAll.length} gesehene Titel`, s: seenAll.slice(0, 4).map((x) => x.title).join(", ") + (seenAll.length > 4 ? " …" : ""), n: seenAll.reduce((a, x) => a + freedBy(x), 0), b: "Ansehen", go: () => ((S.filter = "seen"), drawLib(), $("#lib").scrollIntoView({ behavior: "smooth" })) });
 	const old = items().filter((x) => x.watched === 0 && x.hasFile && x.added && Date.now() - x.added > 90 * 864e5);
@@ -214,6 +218,34 @@ function drawOverview() {
 	$("#sugg").dataset.html = html;
 	$("#sugg").innerHTML = html;
 	$("#sugg").querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => sugg[b.dataset.s].go()));
+}
+
+function orphanFlow(list) {
+	const n = list.reduce((a, t) => a + t.size, 0);
+	const m = modal(`<h3>Verwaiste Torrents entfernen</h3><div class="sm muted" style="margin:6px 0 14px">Diese Torrents gehören zu keinem Titel mehr in Radarr oder Sonarr. Sie werden aus qBittorrent entfernt, mit ihren Dateien im Download-Ordner.</div>
+		<div class="steps">${list.map((t) => `<label class="step pick on" style="cursor:pointer"><input type="checkbox" data-h="${t.hash}" checked style="accent-color:var(--accent)"><div class="grow"><div class="t">${esc(t.title)}</div><div class="s">${esc(t.name)} · Ratio ${t.ratio}</div></div><span class="st num">${bytes(t.size)}</span></label>`).join("")}</div>
+		<div class="freed"><span class="muted">Wird frei</span><b class="num" id="ofree">${bytes(n)}</b></div>
+		<div class="acts"><button class="btn" data-x>Abbrechen</button><button class="btn solid-danger" data-go>Entfernen</button></div>`);
+	const chosen = () => list.filter((t) => m.el.querySelector(`[data-h="${t.hash}"]`).checked);
+	m.el.querySelectorAll("[data-h]").forEach((c) => (c.onchange = () => ($("#ofree", m.el).textContent = bytes(chosen().reduce((a, t) => a + t.size, 0)))));
+	$("[data-x]", m.el).onclick = m.close;
+	$("[data-go]", m.el).onclick = async (e) => {
+		const pick = chosen();
+		if (!pick.length) return m.close();
+		e.currentTarget.classList.add("busy");
+		let ok = 0;
+		for (const t of pick) {
+			try {
+				await api("POST", `/api/torrents/${t.hash}/remove`, { mode: "copy" });
+				ok++;
+			} catch (err) {
+				toast(esc(err.message), true);
+			}
+		}
+		m.close();
+		if (ok) toast(`${ok} ${ok === 1 ? "Torrent" : "Torrents"} entfernt`);
+		await Promise.all([loadTor(), loadLib(true)]);
+	};
 }
 
 function dupFlow(list) {
