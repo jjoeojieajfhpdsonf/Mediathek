@@ -7,9 +7,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { Config } = require("./lib/config");
-const { Arr } = require("./lib/arr");
+const { Arr, keyFromLogin } = require("./lib/arr");
 const { Qbit } = require("./lib/qbit");
-const { Jellyfin } = require("./lib/jellyfin");
+const { Jellyfin, tokenFromLogin } = require("./lib/jellyfin");
+const { detect } = require("./lib/detect");
 const { Media } = require("./lib/media");
 const { Auto } = require("./lib/auto");
 
@@ -91,12 +92,41 @@ route("POST", "/api/items/:id/keep", (b, p) => {
 	return { keep: [...auto.keep()] };
 });
 route("GET", "/api/settings", () => config.view());
-route("POST", "/api/settings", (b) => {
+// a login instead of a key: Radarr and Sonarr hand out their key, Jellyfin a token – the password
+// itself is never kept
+route("POST", "/api/settings", async (b) => {
 	if (DEMO) throw new UserError("Not in the demo");
+	const errors = {};
+	for (const [svc, name] of [["radarr", "Radarr"], ["sonarr", "Sonarr"]]) {
+		const x = b[svc];
+		if (!x) continue;
+		if (x.username && x.password && !x.apiKey) {
+			try {
+				x.apiKey = await keyFromLogin(name, x.url || config.get(svc).url, x.username, x.password);
+			} catch (err) {
+				errors[svc] = err.message;
+			}
+		}
+		delete x.username;
+		delete x.password;
+	}
+	const j = b.jellyfin;
+	if (j && j.user && j.password && !j.apiKey) {
+		try {
+			const r = await tokenFromLogin(j.url || config.get("jellyfin").url, j.user, j.password);
+			j.apiKey = r.token;
+			j.user = r.user;
+		} catch (err) {
+			errors.jellyfin = err.message;
+		}
+	}
+	if (j) delete j.password;
 	config.update(b);
 	connect();
-	return config.view();
+	return { ...config.view(), errors };
 });
+// where the services probably are (fills in the addresses)
+route("GET", "/api/settings/detect", (b, p, q, req) => detect([String(req.headers.host || "").replace(/:\d+$/, ""), "127.0.0.1"]));
 // try each configured service once
 route("POST", "/api/settings/test", async () => {
 	const c = media.c;

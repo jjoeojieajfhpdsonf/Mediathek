@@ -782,11 +782,13 @@ async function autoSheet() {
 
 // ---------- settings ----------
 
+// per service: [field, label, placeholder, secret, full width]
+const LOGIN_HELP = "Mit deinem Login holt die Mediathek den Schlüssel selbst – das Passwort wird nicht gespeichert.";
 const SERVICES = [
-	["radarr", "Radarr", "Filme", [["url", "Adresse", "http://192.168.0.31:7878"], ["apiKey", "API-Schlüssel", "Radarr → Settings → General → API Key", true]]],
-	["sonarr", "Sonarr", "Serien", [["url", "Adresse", "http://192.168.0.31:8989"], ["apiKey", "API-Schlüssel", "Sonarr → Settings → General → API Key", true]]],
-	["qbittorrent", "qBittorrent", "Downloads", [["url", "Adresse", "http://192.168.0.31:8082"], ["username", "Benutzer", "leer, wenn qBittorrent ohne Login erlaubt"], ["password", "Passwort", "", true]]],
-	["jellyfin", "Jellyfin", "Gesehen, läuft gerade", [["url", "Adresse", "http://192.168.0.31:8096"], ["apiKey", "API-Schlüssel", "Jellyfin → Dashboard → API-Schlüssel → +", true], ["user", "Benutzer", "wessen «gesehen» zählt – leer: der erste Admin"]]]
+	["radarr", "Radarr", "Filme", [["url", "Adresse", "http://…:7878", false, true], ["username", "Benutzer", "dein Radarr-Login"], ["password", "Passwort", "", true], ["apiKey", "oder API-Schlüssel", "Settings → General → API Key", true, true]], LOGIN_HELP],
+	["sonarr", "Sonarr", "Serien", [["url", "Adresse", "http://…:8989", false, true], ["username", "Benutzer", "dein Sonarr-Login"], ["password", "Passwort", "", true], ["apiKey", "oder API-Schlüssel", "Settings → General → API Key", true, true]], LOGIN_HELP],
+	["qbittorrent", "qBittorrent", "Downloads", [["url", "Adresse", "http://…:8080", false, true], ["username", "Benutzer", "leer, wenn ohne Login erlaubt"], ["password", "Passwort", "", true]]],
+	["jellyfin", "Jellyfin", "Gesehen, läuft gerade", [["url", "Adresse", "http://…:8096", false, true], ["user", "Benutzer", "wessen «gesehen» zählt"], ["password", "Passwort", "", true], ["apiKey", "oder API-Schlüssel", "Dashboard → API-Schlüssel → +", true, true]], "Mit Benutzer und Passwort holt sich die Mediathek ein eigenes Token – das Passwort wird nicht gespeichert. Ohne Benutzer zählt der erste Admin."]
 ];
 
 async function settingsSheet(first) {
@@ -796,51 +798,74 @@ async function settingsSheet(first) {
 	} catch (err) {
 		return toast(esc(err.message), true);
 	}
-	const field = (svc, [k, label, help, secret]) => {
-		const v = cfg[svc][k];
-		const ph = secret ? (v && v.set ? "gesetzt – leer lassen, um ihn zu behalten" : help) : help;
-		return `<div class="field" style="margin-top:0"><label>${label}</label><input class="input" data-svc="${svc}" data-k="${k}" type="${secret ? "password" : "text"}" value="${secret ? "" : esc(v || "")}" placeholder="${esc(ph || "")}" autocomplete="off" spellcheck="false"></div>`;
+	const field = (svc, [k, label, help, secret, full]) => {
+		const v = (cfg[svc] || {})[k];
+		const isSet = secret && v && v.set;
+		const ph = isSet ? "gesetzt – leer lassen, um ihn zu behalten" : help;
+		return `<div class="field" style="margin-top:0${full ? ";grid-column:1/-1" : ""}"><label>${label}</label><input class="input" data-svc="${svc}" data-k="${k}" type="${secret ? "password" : "text"}" value="${secret ? "" : esc(v || "")}" placeholder="${esc(ph || "")}" autocomplete="${secret ? "new-password" : "off"}" spellcheck="false"></div>`;
 	};
 	const m = modal(`
 		<h3>${first ? "Willkommen bei der Mediathek" : "Einstellungen"}</h3>
-		<div class="sm muted" style="margin-top:6px">${first ? "Verbinde deine Dienste. Radarr oder Sonarr reicht für den Anfang – " : ""}Schlüssel und Passwörter bleiben auf dem Server.</div>
-		${SERVICES.map(([svc, name, what, fields]) => `<div class="svc-form"><h4>${name} <span class="faint" style="font-weight:500;font-size:12.5px">${what}</span><span class="st" data-st="${svc}"></span></h4>
-			<div class="row2">${fields.map((f) => field(svc, f)).join("")}</div></div>`).join("")}
+		<div class="sm muted" style="margin-top:6px">${first ? "Verbinde deine Dienste – Radarr oder Sonarr reicht für den Anfang. Die Adressen sucht die Mediathek selbst. " : ""}Schlüssel und Passwörter bleiben auf dem Server.</div>
+		${SERVICES.map(([svc, name, what, fields, help]) => `<div class="svc-form"><h4>${name} <span class="faint" style="font-weight:500;font-size:12.5px">${what}</span><span class="st" data-st="${svc}"></span></h4>
+			<div class="row2">${fields.map((f) => field(svc, f)).join("")}</div>${help ? `<div class="help">${help}</div>` : ""}</div>`).join("")}
 		<div class="svc-form"><h4>Doppelte Kopien erkennen <span class="faint" style="font-weight:500;font-size:12.5px">optional</span></h4>
 			<div class="field" style="margin-top:0"><label>Download-Ordner</label><input class="input" id="dmap" value="${esc(cfg.downloadsMap || "")}" placeholder="/downloads=/media/downloads" spellcheck="false"></div>
 			<div class="help">qBittorrents Pfad = derselbe Ordner in diesem Container (lesend eingebunden). Dann sieht die Mediathek, ob eine Datei doppelt Platz braucht oder ein Hardlink ist.</div></div>
 		<div class="acts"><button class="btn" data-test>Verbindung testen</button><button class="btn primary" data-save>Speichern</button></div>`, "wide");
 	m.el.style.width = "min(720px, 100%)";
+	const status = (svc, cls, text) => {
+		const s = m.el.querySelector(`[data-st="${svc}"]`);
+		if (s) (s.className = `st ${cls}`), (s.textContent = text);
+	};
+	// empty addresses: filled in with what's found on the usual ports
+	api("GET", "/api/settings/detect")
+		.then((found) => {
+			for (const [svc, url] of Object.entries(found)) {
+				const input = m.el.querySelector(`[data-svc="${svc}"][data-k="url"]`);
+				if (!input) continue;
+				if (url && !input.value) {
+					input.value = url;
+					status(svc, "faint", "Adresse gefunden");
+				} else if (!url && !input.value) status(svc, "faint", "nicht gefunden – Adresse eintragen");
+			}
+		})
+		.catch(() => null);
 	const collect = () => {
 		const body = { downloadsMap: $("#dmap", m.el).value };
 		m.el.querySelectorAll("[data-svc]").forEach((i) => ((body[i.dataset.svc] = body[i.dataset.svc] || {})[i.dataset.k] = i.value));
 		return body;
 	};
+	// saves; a login that didn't work shows at its service and keeps the form open
+	const save = async () => {
+		const r = await api("POST", "/api/settings", collect());
+		S.state = await api("GET", "/api/state");
+		m.el.querySelectorAll('[data-k="password"]').forEach((i) => i.dataset.svc !== "qbittorrent" && (i.value = ""));
+		for (const [svc, msg] of Object.entries(r.errors || {})) status(svc, "bad-text", `✕ ${msg}`);
+		return !Object.keys(r.errors || {}).length;
+	};
 	const test = async () => {
 		m.el.querySelectorAll("[data-st]").forEach((s) => (s.textContent = "…"));
 		const r = await api("POST", "/api/settings/test");
-		for (const [svc, v] of Object.entries(r)) {
-			const s = m.el.querySelector(`[data-st="${svc}"]`);
-			s.className = `st ${v.ok ? "ok-text" : v.ok === false ? "bad-text" : "faint"}`;
-			s.textContent = v.ok ? `✓ verbunden · ${v.info}` : v.ok === false ? `✕ ${v.error}` : "nicht eingerichtet";
-		}
+		for (const [svc, v] of Object.entries(r)) status(svc, v.ok ? "ok-text" : v.ok === false ? "bad-text" : "faint", v.ok ? `✓ verbunden · ${v.info}` : v.ok === false ? `✕ ${v.error}` : "nicht eingerichtet");
 	};
 	$("[data-test]", m.el).onclick = async (e) => {
-		e.currentTarget.classList.add("busy");
+		const b = e.currentTarget;
+		b.classList.add("busy");
 		try {
-			await api("POST", "/api/settings", collect());
-			S.state = await api("GET", "/api/state");
-			await test();
+			if (await save()) await test();
 		} catch (err) {
 			toast(esc(err.message), true);
 		}
-		e.currentTarget.classList.remove("busy");
+		b.classList.remove("busy");
 	};
-	$("[data-save]", m.el).onclick = async () => {
+	$("[data-save]", m.el).onclick = async (e) => {
+		const b = e.currentTarget;
+		b.classList.add("busy");
 		try {
-			await api("POST", "/api/settings", collect());
-			S.state = await api("GET", "/api/state");
+			if (!(await save())) return b.classList.remove("busy");
 		} catch (err) {
+			b.classList.remove("busy");
 			return toast(esc(err.message), true);
 		}
 		m.close();
