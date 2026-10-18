@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A · Suche zuerst</title>
+<link rel="stylesheet" href="common.css">
+<style>
+	.wrap { max-width: 1100px; margin: 0 auto; padding: 56px 24px 90px; }
+	.brand { text-align: center; font-weight: 700; font-size: 15px; color: var(--muted); letter-spacing: .02em; }
+	.search { position: relative; max-width: 680px; margin: 18px auto 0; }
+	.search input { font-size: 18px; padding: 16px 20px 16px 50px; border-radius: 18px; background: var(--tile); border: 1px solid var(--line); }
+	.search input:focus { border-color: rgba(157, 188, 255, .4); }
+	.search svg { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); color: var(--faint); }
+	.hint { text-align: center; margin-top: 10px; font-size: 12.5px; color: var(--faint); }
+	.sec { display: flex; align-items: baseline; justify-content: space-between; margin: 34px 2px 12px; }
+	.sec h2 { font-size: 15px; font-weight: 650; }
+	.row { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+	.card { cursor: pointer; text-align: left; }
+	.card .poster { transition: transform .15s ease; }
+	.card:hover .poster { transform: translateY(-2px); }
+	.card .tt { font-weight: 600; font-size: 13px; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.card .ss { font-size: 12px; color: var(--faint); }
+	/* search results */
+	.results { max-width: 680px; margin: 14px auto 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+	.group { background: var(--tile); border: 1px solid var(--line); border-radius: 18px; padding: 6px; }
+	.group .gh { font-size: 12px; color: var(--faint); font-weight: 600; padding: 8px 10px 4px; }
+	.res { display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 12px; }
+	.res:hover { background: var(--tile-2); }
+	.res .poster { width: 44px; border-radius: 7px; font-size: 0; padding: 0; }
+	.res .grow { flex: 1; min-width: 0; }
+	.res .tt { font-weight: 600; }
+	.res .ss { font-size: 12.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	/* detail drawer */
+	.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--tile); border-left: 1px solid var(--line); z-index: 80; padding: 22px; overflow: auto; transform: translateX(100%); transition: transform .22s ease; box-shadow: -30px 0 60px rgba(0, 0, 0, .35); }
+	.drawer.open { transform: none; }
+	.drawer .top { display: flex; gap: 16px; }
+	.drawer .top .poster { width: 110px; }
+	.drawer h3 { font-size: 20px; font-weight: 700; line-height: 1.2; }
+	.kv { display: grid; gap: 0; background: var(--tile-2); border-radius: 14px; margin-top: 18px; }
+	.kv > div { display: flex; justify-content: space-between; gap: 10px; padding: 10px 14px; font-size: 13px; }
+	.kv > div + div { border-top: 1px solid var(--line); }
+	.kv span:first-child { color: var(--muted); }
+	.seasons { display: grid; gap: 6px; margin-top: 18px; }
+	.season { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+	.season .bar { flex: 1; height: 6px; }
+	.x { position: absolute; top: 16px; right: 16px; width: 30px; height: 30px; border-radius: 50%; background: var(--tile-3); color: var(--muted); }
+	.dl { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--tile); border: 1px solid var(--line); border-radius: 14px; }
+	.dl .grow { flex: 1; min-width: 0; }
+	.dl .bar { height: 5px; margin-top: 6px; }
+	.qbbox { background: var(--tile); border: 1px solid var(--line); border-radius: 18px; padding: 12px 12px 6px; }
+	.more { width: 100%; padding: 9px; margin-top: 2px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); }
+	.more:hover { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+	<div class="brand">Mediathek</div>
+	<div class="search">
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+		<input class="input" id="q" placeholder="Film oder Serie suchen …" autocomplete="off" autofocus>
+	</div>
+	<div class="hint" id="hint">Findet, was du schon hast, und was du hinzufügen kannst – Filme und Serien in einem</div>
+	<div id="out"></div>
+</div>
+<aside class="drawer" id="drawer"></aside>
+<script src="shared.js"></script>
+<script>
+const q = $("#q");
+const out = $("#out");
+const drawer = $("#drawer");
+
+function home() {
+	const watching = LIBRARY.filter((x) => x.watched > 0 && x.watched < 1);
+	const recent = [...LIBRARY].sort((a, b) => b.added.localeCompare(a.added));
+	out.innerHTML = `
+		<div class="sec"><h2>Downloads</h2><span class="sm faint">qBittorrent</span></div>
+		<div class="qbbox" id="qbbox"></div>
+		${watching.length ? `<div class="sec"><h2>Angefangen</h2></div><div class="row">${watching.map(card).join("")}</div>` : ""}
+		<div class="sec"><h2>Deine Bibliothek</h2><span class="sm faint">${LIBRARY.length} Titel · ${gb(LIBRARY.reduce((a, x) => a + x.size, 0))}</span></div>
+		<div class="row">${recent.map(card).join("")}</div>`;
+	drawQb();
+	bind();
+}
+
+// loading ones first, then a line for the ones that only seed (opens the rest)
+let showSeeding = false;
+function drawQb() {
+	const box = $("#qbbox");
+	if (!box) return;
+	const active = TORRENTS.filter((t) => ["down", "stalled", "meta"].includes(t.state));
+	const rest = TORRENTS.filter((t) => !active.includes(t));
+	box.innerHTML = `${qbHead()}${active.map((t) => torrentRow(t)).join("") || `<div class="sm faint" style="padding:8px 6px">Nichts wird geladen</div>`}
+		${rest.length ? (showSeeding ? rest.map((t) => torrentRow(t)).join("") + `<button class="more" id="more">Weniger zeigen</button>` : `<button class="more" id="more">${rest.length} fertige Torrents (teilen oder pausiert) zeigen</button>`) : ""}`;
+	bindTorrents(box, render);
+	const more = $("#more", box);
+	if (more) more.onclick = () => ((showSeeding = !showSeeding), drawQb());
+}
+
+function card(x) {
+	const prog = x.downloading !== undefined ? `<div class="prog"><i style="width:${x.downloading * 100}%"></i></div>` : x.watched > 0 && x.watched < 1 ? `<div class="prog"><i style="width:${x.watched * 100}%"></i></div>` : "";
+	return `<button class="card" data-id="${x.id}">${posterHtml(x, prog)}<div class="tt">${esc(x.title)}</div><div class="ss">${x.year} · ${x.type === "movie" ? "Film" : "Serie"}${x.watched >= 1 ? " · gesehen" : ""}</div></button>`;
+}
+
+function search(text) {
+	const w = words(text);
+	const hit = (x) => w.every((p) => `${x.title} ${x.year}`.toLowerCase().includes(p));
+	const mine = LIBRARY.filter(hit);
+	const found = catalogFor(text, render);
+	const add = found.filter((x) => !inLibrary(x.id));
+	const have = mine;
+	out.innerHTML = `<div class="results">
+		${have.length ? `<div class="group"><div class="gh">In deiner Bibliothek</div>${have.map((x) => `<div class="res">${posterHtml(x)}<div class="grow"><div class="tt">${esc(x.title)} <span class="faint" style="font-weight:400">${x.year}</span></div><div class="ss">${typeTag(x)} ${gb(x.size)} · ${seen(x)}</div></div><button class="btn small" data-id="${x.id}">Details</button><button class="btn small danger" data-del="${x.id}">Löschen</button></div>`).join("")}</div>` : ""}
+		${add.length ? `<div class="group"><div class="gh">Hinzufügen</div>${add.map((x) => `<div class="res">${posterHtml(x)}<div class="grow"><div class="tt">${esc(x.title)} <span class="faint" style="font-weight:400">${x.year}</span></div><div class="ss">${typeTag(x)} ${[x.rating ? `★ ${x.rating}` : "", esc(x.about)].filter(Boolean).join(" · ")}</div></div>${x.have ? `<span class="sm faint">schon in ${appOf(x)}</span>` : `<button class="btn small primary" data-add="${x.id}">+ Hinzufügen</button>`}</div>`).join("")}</div>` : ""}
+		${LIVE.busy ? `<div class="hint">Sucht in Radarr und Sonarr …</div>` : !have.length && !add.length ? `<div class="hint">Nichts gefunden für «${esc(text)}»</div>` : ""}
+	</div>`;
+	bind();
+}
+
+function bind() {
+	out.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => openDetail(inLibrary(b.dataset.id))));
+	out.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteFlow(inLibrary(b.dataset.del), render)));
+	out.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => addFlow(CATALOG.find((x) => x.id === b.dataset.add), render)));
+}
+
+function openDetail(x) {
+	if (!x) return;
+	const tor = TORRENTS.find((t) => t.lib === x.id);
+	drawer.innerHTML = `<button class="x" onclick="drawer.classList.remove('open')">✕</button>
+		<div class="top">${posterHtml(x)}<div style="padding-top:4px"><div>${typeTag(x)}</div><h3 style="margin-top:8px">${esc(x.title)}</h3><div class="sm muted">${x.year}${x.runtime ? ` · ${x.runtime}` : ""}</div>
+		${x.watching ? `<div class="sm" style="color:var(--accent);margin-top:8px">▶ ${x.watching} schaut gerade</div>` : ""}</div></div>
+		${x.seasons ? `<div class="seasons">${x.seasons.map((s) => `<div class="season"><span style="width:62px">Staffel ${s.n}</span><div class="bar"><i style="width:${(s.have / s.of) * 100}%;background:${s.have === s.of ? "var(--ok)" : "var(--warn)"}"></i></div><span class="faint num" style="width:44px;text-align:right">${s.have}/${s.of}</span></div>`).join("")}</div>` : ""}
+		<div class="kv">
+			<div><span>Gesehen</span><span>${seen(x)}</span></div>
+			<div><span>Qualität</span><span>${esc(x.quality)}</span></div>
+			<div><span>Hinzugefügt</span><span>${ago(x.added)}</span></div>
+			<div><span>Grösse</span><span class="num">${gb(x.size)}</span></div>
+			${x.torrent && x.torrent.copy ? `<div><span>Kopie in Downloads</span><span class="num" style="color:var(--warn)">${gb(x.size)}</span></div>` : ""}
+		</div>
+		${tor ? `<div class="sm muted" style="margin:18px 2px 4px;font-weight:600">Torrent</div><div class="qbbox" id="dtor">${torrentRow(tor)}</div>` : ""}
+		<div style="display:flex;gap:8px;margin-top:18px"><button class="btn danger" id="del" style="flex:1;justify-content:center">Überall löschen · ${gb(freedBy(x))}</button></div>
+		<div class="sm faint" style="margin-top:10px">Löscht in ${appOf(x)}, qBittorrent und Jellyfin auf einmal.</div>`;
+	$("#del", drawer).onclick = () => deleteFlow(x, () => (drawer.classList.remove("open"), render()));
+	if (tor) bindTorrents($("#dtor", drawer), () => (render(), openDetail(inLibrary(x.id))));
+	drawer.classList.add("open");
+}
+
+function render() {
+	if (q.value.trim()) search(q.value.trim());
+	else home();
+	$("#hint").style.display = q.value.trim() ? "none" : "";
+}
+q.addEventListener("input", render);
+document.addEventListener("keydown", (e) => {
+	if (e.key === "Escape") drawer.classList.remove("open");
+	if (e.key === "/" && document.activeElement !== q) (e.preventDefault(), q.focus());
+});
+render();
+onTick(() => (q.value.trim() ? null : drawQb()));
+protoNav("a.html");
+</script>
+</body>
+</html>

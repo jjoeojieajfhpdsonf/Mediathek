@@ -1,0 +1,18 @@
+services:
+  mediathek:
+    build: .
+    container_name: mediathek
+    restart: unless-stopped
+    # host network: reaches Radarr, Sonarr, qBittorrent and Jellyfin the way you do
+    network_mode: host
+    environment:
+      - PORT=8098
+      - TZ=Europe/Zurich
+      # - PASSWORD=change-me                    # optional login
+      # qBittorrent's download folder as seen in here – shows whether a finished torrent is a
+      # second copy (takes space twice) or a hardlink
+      - DOWNLOADS_MAP=/downloads=/media/downloads
+    volumes:
+      - ./data:/data
+      # the media folder, read-only (only to tell copies from hardlinks)
+      - /mnt/media:/media:ro

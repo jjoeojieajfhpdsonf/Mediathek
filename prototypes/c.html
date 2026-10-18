@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C · Aufräumen</title>
+<link rel="stylesheet" href="common.css">
+<style>
+	.wrap { max-width: 1440px; margin: 0 auto; padding: 26px 24px 90px; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+	@media (max-width: 1000px) { .wrap { grid-template-columns: 1fr; } }
+	.brand { font-weight: 700; font-size: 16px; margin-bottom: 16px; }
+	.card { background: var(--tile); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+	.overview { display: grid; grid-template-columns: minmax(260px, 1.1fr) 2fr; gap: 14px; }
+	@media (max-width: 800px) { .overview { grid-template-columns: 1fr; } }
+	.free b { font-size: 30px; font-weight: 700; letter-spacing: -.01em; }
+	.sugg { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+	.sug { background: var(--tile-2); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+	.sug .t { font-weight: 600; }
+	.sug .s { font-size: 12px; color: var(--faint); flex: 1; }
+	.sug .foot { display: flex; align-items: center; justify-content: space-between; }
+	.sug .foot b { font-size: 16px; }
+	.head2 { display: flex; align-items: center; gap: 10px; margin: 22px 2px 10px; }
+	.head2 h2 { font-size: 15px; font-weight: 650; flex: 1; }
+	.table { background: var(--tile); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+	.tr { display: grid; grid-template-columns: 28px minmax(0, 2.4fr) 1fr 1.1fr 1fr 1.2fr 92px; gap: 12px; align-items: center; padding: 8px 14px; }
+	.tr + .tr { border-top: 1px solid var(--line); }
+	.th { font-size: 12px; color: var(--faint); font-weight: 600; padding: 10px 14px; }
+	.th button { color: inherit; font-weight: inherit; }
+	.th button.on { color: var(--text); }
+	.tr:not(.th):hover { background: rgba(255, 255, 255, .02); }
+	.tr.picked { background: rgba(157, 188, 255, .06); }
+	.ttl { display: flex; align-items: center; gap: 12px; min-width: 0; }
+	.ttl .poster { width: 34px; border-radius: 6px; font-size: 0; padding: 0; }
+	.ttl .tt { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.ttl .ss { font-size: 12px; color: var(--faint); }
+	.cell { font-size: 13px; color: var(--muted); }
+	.cell .s { font-size: 11.5px; color: var(--faint); }
+	.mini { height: 4px; border-radius: 4px; background: var(--tile-3); overflow: hidden; margin-top: 5px; width: 70px; }
+	.mini i { display: block; height: 100%; background: var(--accent); }
+	input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
+	.side { position: sticky; top: 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+	.side h3 { font-size: 14px; font-weight: 650; margin-bottom: 10px; }
+	.res { display: flex; align-items: center; gap: 11px; padding: 7px 4px; border-radius: 10px; }
+	.res + .res { border-top: 1px solid var(--line); }
+	.res .poster { width: 34px; border-radius: 6px; font-size: 0; padding: 0; }
+	.res .grow { flex: 1; min-width: 0; }
+	.res .tt { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.res .ss { font-size: 12px; color: var(--faint); }
+	.plus { width: 30px; height: 30px; border-radius: 9px; background: rgba(157, 188, 255, .12); color: var(--accent); font-size: 18px; flex-shrink: 0; }
+	.plus:hover { background: rgba(157, 188, 255, .22); }
+	.bulk { display: none; align-items: center; gap: 10px; }
+	.bulk.show { display: flex; }
+	.torlink { text-align: left; font-size: 13px; color: var(--muted); }
+	.torlink:hover { color: var(--text); }
+	#loading .tor { padding: 9px 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+	<main>
+		<div class="brand">Mediathek</div>
+		<div class="overview">
+			<div class="card free" id="free"></div>
+			<div class="card"><div style="font-weight:650;margin-bottom:10px">Vorschläge zum Aufräumen</div><div class="sugg" id="sugg"></div></div>
+		</div>
+		<div class="head2"><h2>Bibliothek</h2>
+			<div class="bulk" id="bulk"></div>
+			<input class="input" id="q" placeholder="Filtern …" style="width:200px;padding:7px 11px;background:var(--tile)">
+		</div>
+		<div class="table" id="table"></div>
+	</main>
+	<aside class="side">
+		<div class="card">
+			<h3>Hinzufügen</h3>
+			<input class="input" id="aq" placeholder="Film oder Serie …">
+			<div id="ares" style="margin-top:8px"></div>
+		</div>
+		<div class="card" id="loading"></div>
+	</aside>
+</div>
+<script src="shared.js"></script>
+<script>
+let sort = "size";
+const picked = new Set();
+
+function render() {
+	// storage
+	const free = DISK.total - DISK.used;
+	const movies = LIBRARY.filter((x) => x.type === "movie").reduce((a, x) => a + x.size, 0);
+	const series = LIBRARY.filter((x) => x.type === "series").reduce((a, x) => a + x.size, 0);
+	const other = Math.max(0, DISK.used - movies - series - DISK.dup);
+	$("#free").innerHTML = `<div class="muted sm">Frei auf dem Server</div><b class="num">${gb(free)}</b><span class="faint sm"> von ${DISK.total} GB</span>
+		<div class="bar" style="margin-top:14px"><i style="width:${(movies / DISK.total) * 100}%;background:var(--movie)"></i><i style="width:${(series / DISK.total) * 100}%;background:var(--series)"></i><i style="width:${(DISK.dup / DISK.total) * 100}%;background:var(--bad)"></i><i style="width:${(other / DISK.total) * 100}%;background:#555"></i></div>
+		<div class="legend"><span style="--c:var(--movie)">Filme ${gb(movies)}</span><span style="--c:var(--series)">Serien ${gb(series)}</span><span style="--c:var(--bad)">Doppelt ${gb(DISK.dup)}</span><span style="--c:#555">System ${gb(other)}</span></div>`;
+
+	// suggestions
+	const seenBig = LIBRARY.filter((x) => x.watched >= 1);
+	const dupDone = LIBRARY.filter((x) => x.torrent && x.torrent.copy && x.torrent.ratio >= 1);
+	const sugg = [];
+	if (DISK.dup > 0.5) sugg.push({ t: "Doppelte Kopien", s: `${dupDone.length} Torrents sind fertig geteilt – die Kopie in Downloads kann weg, die Filme bleiben.`, n: dupDone.reduce((a, x) => a + x.size, 0), b: "Aufräumen", go: dupFlow });
+	if (seenBig.length) sugg.push({ t: `${seenBig.length} gesehene Titel`, s: seenBig.map((x) => x.title).join(", "), n: seenBig.reduce((a, x) => a + freedBy(x), 0), b: "Ansehen", go: () => ((sort = "seen"), render()) });
+	const old = LIBRARY.filter((x) => x.watched === 0 && Date.parse(x.added) < Date.parse("2026-07-18"));
+	if (old.length) sugg.push({ t: "Lange nicht geschaut", s: `${old.map((x) => x.title).join(", ")} – seit über 3 Monaten da, nie angefangen.`, n: old.reduce((a, x) => a + freedBy(x), 0), b: "Löschen", go: () => deleteFlow(old, render) });
+	$("#sugg").innerHTML = sugg.map((x, i) => `<div class="sug"><div class="t">${esc(x.t)}</div><div class="s">${esc(x.s)}</div><div class="foot"><b class="num">${gb(x.n)}</b><button class="btn small" data-s="${i}">${x.b}</button></div></div>`).join("") || `<div class="faint sm">Alles aufgeräumt.</div>`;
+	$("#sugg").querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => sugg[b.dataset.s].go()));
+
+	// table
+	const w = $("#q").value.toLowerCase().split(/\s+/).filter(Boolean);
+	const by = { size: (a, b) => freedBy(b) - freedBy(a), title: (a, b) => a.title.localeCompare(b.title), seen: (a, b) => b.watched - a.watched, added: (a, b) => a.added.localeCompare(b.added) };
+	const list = LIBRARY.filter((x) => w.every((p) => x.title.toLowerCase().includes(p))).sort(by[sort]);
+	const col = (k, l) => `<button data-sort="${k}" class="${sort === k ? "on" : ""}">${l}${sort === k ? " ↓" : ""}</button>`;
+	$("#table").innerHTML = `<div class="tr th"><span></span>${col("title", "Titel")}${col("seen", "Gesehen")}${col("size", "Platz")}${col("added", "Hinzugefügt")}<span>Torrent</span><span></span></div>` +
+		list.map((x) => `<div class="tr ${picked.has(x.id) ? "picked" : ""}">
+			<input type="checkbox" data-pick="${x.id}" ${picked.has(x.id) ? "checked" : ""}>
+			<div class="ttl">${posterHtml(x)}<div style="min-width:0"><div class="tt">${esc(x.title)}</div><div class="ss">${typeTag(x)} ${x.year}${x.seasons ? ` · ${x.seasons.length} Staffeln` : ""}</div></div></div>
+			<div class="cell">${x.downloading !== undefined ? `<span style="color:var(--accent)">lädt ${Math.round(x.downloading * 100)} %</span>` : x.watched >= 1 ? `<span style="color:var(--ok)">✓ gesehen</span>` : x.watched > 0 ? `${Math.round(x.watched * 100)} %<div class="mini"><i style="width:${x.watched * 100}%"></i></div>` : `<span class="faint">–</span>`}</div>
+			<div class="cell num">${gb(x.size)}${x.torrent && x.torrent.copy ? `<div class="s" style="color:var(--warn)">+ ${gb(x.size)} Kopie</div>` : ""}</div>
+			<div class="cell">${ago(x.added)}</div>
+			<div class="cell">${(() => { const t = TORRENTS.find((t) => t.lib === x.id); return t ? `<button class="torlink" data-detail="${t.id}"><span style="color:${STATE[t.state][1]}">${STATE[t.state][0]}</span> · ${t.ratio}<div class="s">${t.done < 1 ? `${Math.round(t.done * 100)} %` : t.ratio >= 1 ? "fertig geteilt" : "noch nicht fertig"}</div></button>` : `<span class="faint">entfernt</span>`; })()}</div>
+			<button class="btn small danger" data-del="${x.id}">Löschen</button>
+		</div>`).join("");
+	$("#table").querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => torrentDetail(TORRENTS.find((t) => t.id === b.dataset.detail), render)));
+	$("#table").querySelectorAll("[data-sort]").forEach((b) => (b.onclick = () => ((sort = b.dataset.sort), render())));
+	$("#table").querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteFlow(inLibrary(b.dataset.del), render)));
+	$("#table").querySelectorAll("[data-pick]").forEach((b) => (b.onchange = () => (b.checked ? picked.add(b.dataset.pick) : picked.delete(b.dataset.pick), render())));
+	const sel = LIBRARY.filter((x) => picked.has(x.id));
+	$("#bulk").classList.toggle("show", sel.length > 0);
+	$("#bulk").innerHTML = `<span class="sm muted">${sel.length} gewählt · ${gb(sel.reduce((a, x) => a + freedBy(x), 0))}</span><button class="btn small solid-danger" id="delsel">Löschen</button>`;
+	if (sel.length) $("#delsel").onclick = () => deleteFlow(sel, () => (picked.clear(), render()));
+
+	drawQb();
+	addResults();
+}
+
+// qBittorrent in the sidebar: speeds, switches, every torrent
+function drawQb() {
+	const box = $("#loading");
+	const order = { down: 0, meta: 0, stalled: 1, seed: 2, paused: 3 };
+	box.innerHTML = `<h3>qBittorrent</h3>${qbHead()}${[...TORRENTS].sort((a, b) => order[a.state] - order[b.state]).map((t) => torrentRow(t, { compact: true })).join("") || `<div class="sm faint">Keine Torrents</div>`}`;
+	bindTorrents(box, render);
+}
+onTick(drawQb);
+
+function addResults() {
+	const text = $("#aq").value;
+	const box = $("#ares");
+	if (!text.trim()) return (box.innerHTML = `<div class="sm faint" style="padding:6px 2px">Sucht Filme und Serien – Radarr oder Sonarr wählt sich von selbst.</div>`);
+	const list = catalogFor(text, addResults).slice(0, 8);
+	box.innerHTML = list.map((x) => {
+		const h = have(x);
+		return `<div class="res">${posterHtml(inLibrary(x.id) || x)}<div class="grow"><div class="tt">${esc(x.title)}</div><div class="ss">${typeTag(x)} ${[x.year, h ? "schon da" : x.rating ? `★ ${x.rating}` : ""].filter(Boolean).join(" · ")}</div></div>${h ? "" : `<button class="plus" data-a="${x.id}">+</button>`}</div>`;
+	}).join("") || `<div class="sm faint" style="padding:6px 2px">${LIVE.busy ? "Sucht in Radarr und Sonarr …" : "Nichts gefunden"}</div>`;
+	box.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => addFlow(CATALOG.find((x) => x.id === b.dataset.a), render)));
+}
+
+// only the second copy: torrents that are done seeding go, the library stays
+function dupFlow() {
+	const items = LIBRARY.filter((x) => x.torrent && x.torrent.copy && x.torrent.ratio >= 1);
+	const n = items.reduce((a, x) => a + x.size, 0);
+	const m = modal(`<h3>Doppelte Kopien aufräumen</h3><div class="sm muted" style="margin:6px 0 14px">Diese Torrents sind fertig geteilt. Ihre Kopie im Download-Ordner wird gelöscht – die Filme und Serien in Jellyfin bleiben.</div>
+		<div class="steps">${items.map((x) => `<div class="step">${typeTag(x)}<div class="grow"><div class="t">${esc(x.title)}</div><div class="s">Ratio ${x.torrent.ratio}</div></div><span class="st num">${gb(x.size)}</span></div>`).join("")}</div>
+		<div class="freed"><span class="muted">Wird frei</span><b class="num">${gb(n)}</b></div>
+		<div class="sm faint" style="margin-top:10px">Tipp: Mit Hardlinks bräuchte jeder Film nur einmal Platz – das richtet die Mediathek auf Wunsch ein.</div>
+		<div class="acts"><button class="btn" data-x>Abbrechen</button><button class="btn primary" data-go>Aufräumen</button></div>`);
+	$("[data-x]", m.el).onclick = m.close;
+	$("[data-go]", m.el).onclick = () => {
+		m.close();
+		for (const x of items) {
+			x.torrent = null;
+			const t = TORRENTS.findIndex((t) => t.lib === x.id);
+			if (t >= 0) TORRENTS.splice(t, 1);
+		}
+		DISK.used -= n;
+		DISK.dup -= n;
+		toast(`${gb(n)} frei – ${items.length} Torrents entfernt`);
+		render();
+	};
+}
+
+$("#q").oninput = render;
+$("#aq").oninput = addResults;
+render();
+protoNav("c.html");
+</script>
+</body>
+</html>

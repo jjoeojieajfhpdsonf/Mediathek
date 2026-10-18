@@ -1,0 +1,16 @@
+{
+	"name": "mediathek",
+	"version": "0.1.0",
+	"description": "Movies and series in one place: search and add through Radarr and Sonarr, follow qBittorrent, see what Jellyfin has watched, delete everywhere at once. No dependencies.",
+	"main": "server.js",
+	"private": true,
+	"scripts": {
+		"start": "node server.js",
+		"demo": "DEMO=1 PORT=8131 node server.js",
+		"test": "node --test test/*.test.js"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"author": "Joël Herren"
+}

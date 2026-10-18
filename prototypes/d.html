@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D · Mediathek</title>
+<link rel="stylesheet" href="common.css">
+<style>
+	.wrap { max-width: 1440px; margin: 0 auto; padding: 26px 24px 90px; display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 20px; align-items: start; }
+	@media (max-width: 1000px) { .wrap { grid-template-columns: 1fr; } }
+	.brand { font-weight: 700; font-size: 16px; }
+	.topbar { max-width: 1440px; margin: 0 auto; padding: 20px 24px 0; display: flex; align-items: center; gap: 16px; }
+	.find-btn { margin-left: auto; display: flex; align-items: center; gap: 10px; width: min(420px, 50vw); padding: 9px 12px; border-radius: 12px; background: var(--tile); border: 1px solid var(--line); color: var(--faint); font-size: 13.5px; }
+	.find-btn:hover { border-color: rgba(157, 188, 255, .35); color: var(--muted); }
+	.find-btn span { flex: 1; text-align: left; }
+	kbd { font: 600 11px/1 inherit; padding: 4px 6px; border-radius: 6px; background: var(--tile-3); color: var(--muted); }
+	/* full-screen search */
+	.spot { position: fixed; inset: 0; z-index: 95; background: rgba(8, 8, 10, .82); backdrop-filter: blur(10px); overflow: auto; padding: 8vh 20px 40px; }
+	.spot[hidden] { display: none; }
+	.spot-in { max-width: 860px; margin: 0 auto; }
+	.spot-box { display: flex; align-items: center; gap: 12px; background: var(--tile); border: 1px solid rgba(157, 188, 255, .3); border-radius: 18px; padding: 4px 16px; box-shadow: 0 30px 80px rgba(0, 0, 0, .5); }
+	.spot-box svg { color: var(--faint); flex-shrink: 0; }
+	.spot-box input { flex: 1; background: none; border: 0; outline: none; font-size: 22px; padding: 14px 0; }
+	.spot-sec { font-size: 12px; color: var(--faint); font-weight: 600; margin: 22px 6px 8px; }
+	.spot-list { background: var(--tile); border: 1px solid var(--line); border-radius: 18px; padding: 6px; }
+	.hit { display: flex; align-items: center; gap: 14px; padding: 8px 10px; border-radius: 12px; cursor: pointer; }
+	.hit.sel { background: var(--tile-3); }
+	.hit .poster { width: 48px; border-radius: 7px; font-size: 0; padding: 0; }
+	.hit .grow { flex: 1; min-width: 0; }
+	.hit .tt { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.hit .ss { font-size: 12.5px; color: var(--faint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.hit .go { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+	.hit.sel .go { color: var(--accent); }
+	.spot-foot { display: flex; gap: 16px; justify-content: center; margin-top: 16px; font-size: 12px; color: var(--faint); }
+	.card { background: var(--tile); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+	.overview { display: grid; grid-template-columns: minmax(260px, 1.1fr) 2fr; gap: 14px; }
+	@media (max-width: 800px) { .overview { grid-template-columns: 1fr; } }
+	.free b { font-size: 30px; font-weight: 700; letter-spacing: -.01em; }
+	.sugg { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+	.sug { background: var(--tile-2); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+	.sug .t { font-weight: 600; }
+	.sug .s { font-size: 12px; color: var(--faint); flex: 1; }
+	.sug .foot { display: flex; align-items: center; justify-content: space-between; }
+	.sug .foot b { font-size: 16px; }
+	.head2 { display: flex; align-items: center; gap: 10px; margin: 22px 2px 10px; }
+	.head2 h2 { font-size: 15px; font-weight: 650; flex: 1; }
+	.mini { height: 4px; border-radius: 4px; background: var(--tile-3); overflow: hidden; margin-top: 5px; width: 70px; }
+	.mini i { display: block; height: 100%; background: var(--accent); }
+	.chips { display: flex; gap: 4px; background: var(--tile); padding: 4px; border-radius: 12px; }
+	.chips button { padding: 5px 11px; border-radius: 9px; color: var(--muted); font-size: 12.5px; font-weight: 560; white-space: nowrap; }
+	.chips button.on { background: var(--tile-3); color: var(--text); }
+	.sub-h { font-size: 13px; color: var(--muted); font-weight: 600; margin: 18px 2px 10px; }
+	.row { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px 14px; }
+	.pc { cursor: pointer; text-align: left; position: relative; }
+	.pc .poster { transition: transform .15s ease, box-shadow .15s ease; }
+	.pc:hover .poster { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(0, 0, 0, .45); }
+	.pc .tt { font-weight: 600; font-size: 13px; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.pc .ss { font-size: 12px; color: var(--faint); display: flex; justify-content: space-between; gap: 6px; }
+	.pc .dl-badge { position: absolute; top: 7px; right: 7px; }
+	/* detail drawer */
+	.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--tile); border-left: 1px solid var(--line); z-index: 80; padding: 22px; overflow: auto; transform: translateX(100%); transition: transform .22s ease; box-shadow: -30px 0 60px rgba(0, 0, 0, .35); }
+	.drawer.open { transform: none; }
+	.drawer .top { display: flex; gap: 16px; }
+	.drawer .top .poster { width: 110px; }
+	.drawer h3 { font-size: 20px; font-weight: 700; line-height: 1.2; }
+	.kv { display: grid; background: var(--tile-2); border-radius: 14px; margin-top: 18px; }
+	.kv > div { display: flex; justify-content: space-between; gap: 10px; padding: 10px 14px; font-size: 13px; }
+	.kv > div + div { border-top: 1px solid var(--line); }
+	.kv span:first-child { color: var(--muted); }
+	.seasons { display: grid; gap: 6px; margin-top: 18px; }
+	.season { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+	.season .bar { flex: 1; height: 6px; }
+	.drawer .x { position: absolute; top: 16px; right: 16px; width: 30px; height: 30px; border-radius: 50%; background: var(--tile-3); color: var(--muted); }
+	.dtor { background: var(--tile-2); border-radius: 14px; padding: 2px 8px; }
+	.side { position: sticky; top: 20px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+	.side h3 { font-size: 14px; font-weight: 650; margin-bottom: 10px; }
+	.res { display: flex; align-items: center; gap: 11px; padding: 7px 4px; border-radius: 10px; }
+	.res + .res { border-top: 1px solid var(--line); }
+	.res .poster { width: 34px; border-radius: 6px; font-size: 0; padding: 0; }
+	.res .grow { flex: 1; min-width: 0; }
+	.res .tt { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.res .ss { font-size: 12px; color: var(--faint); }
+	.plus { width: 30px; height: 30px; border-radius: 9px; background: rgba(157, 188, 255, .12); color: var(--accent); font-size: 18px; flex-shrink: 0; }
+	.plus:hover { background: rgba(157, 188, 255, .22); }
+	.bulk { display: none; align-items: center; gap: 10px; }
+	.bulk.show { display: flex; }
+	.torlink { text-align: left; font-size: 13px; color: var(--muted); }
+	.torlink:hover { color: var(--text); }
+	#loading .tor { padding: 13px 4px; align-items: flex-start; gap: 12px; }
+	#loading .tor-s { white-space: normal; line-height: 1.5; margin-top: 4px; }
+	#loading .tor-name { font-size: 14px; }
+	#loading .tor .bar { height: 5px !important; margin-top: 9px !important; }
+	#loading .tor-size { padding-top: 2px; }
+	#loading .grp { font-size: 12px; color: var(--faint); font-weight: 600; margin: 16px 4px 2px; }
+	#loading .qb-head { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="topbar"><div class="brand">Mediathek</div><button class="find-btn" id="openSpot"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Film oder Serie suchen …</span><kbd class="mod-k"></kbd></button></div>
+<div class="wrap" style="padding-top:18px">
+	<main>
+		<div class="overview">
+			<div class="card free" id="free"></div>
+			<div class="card"><div style="font-weight:650;margin-bottom:10px">Vorschläge zum Aufräumen</div><div class="sugg" id="sugg"></div></div>
+		</div>
+		<div class="head2"><h2>Bibliothek</h2>
+			<div class="chips" id="chips"></div>
+			<input class="input" id="q" placeholder="Filtern …" style="width:200px;padding:7px 11px;background:var(--tile)">
+		</div>
+		<div id="lib"></div>
+	</main>
+	<aside class="side">
+		<div class="card" id="loading"></div>
+	</aside>
+</div>
+<aside class="drawer" id="drawer"></aside>
+<div class="spot" id="spot" hidden><div class="spot-in">
+	<div class="spot-box"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="sq" placeholder="Film oder Serie suchen …" autocomplete="off" spellcheck="false"><kbd>esc</kbd></div>
+	<div id="sres"></div>
+	<div class="spot-foot"><span>↑ ↓ auswählen</span><span>↵ öffnen oder hinzufügen</span><span>esc schliessen</span></div>
+</div></div>
+<script src="shared.js"></script>
+<script>
+let filter = "all";
+const drawer = $("#drawer");
+const FILTERS = [["all", "Alle"], ["movie", "Filme"], ["series", "Serien"], ["seen", "Gesehen"], ["big", "Gross zuerst"]];
+
+function render() {
+	// storage
+	const free = DISK.total - DISK.used;
+	const movies = LIBRARY.filter((x) => x.type === "movie").reduce((a, x) => a + x.size, 0);
+	const series = LIBRARY.filter((x) => x.type === "series").reduce((a, x) => a + x.size, 0);
+	const other = Math.max(0, DISK.used - movies - series - DISK.dup);
+	$("#free").innerHTML = `<div class="muted sm">Frei auf dem Server</div><b class="num">${gb(free)}</b><span class="faint sm"> von ${DISK.total} GB</span>
+		<div class="bar" style="margin-top:14px"><i style="width:${(movies / DISK.total) * 100}%;background:var(--movie)"></i><i style="width:${(series / DISK.total) * 100}%;background:var(--series)"></i><i style="width:${(DISK.dup / DISK.total) * 100}%;background:var(--bad)"></i><i style="width:${(other / DISK.total) * 100}%;background:#555"></i></div>
+		<div class="legend"><span style="--c:var(--movie)">Filme ${gb(movies)}</span><span style="--c:var(--series)">Serien ${gb(series)}</span><span style="--c:var(--bad)">Doppelt ${gb(DISK.dup)}</span><span style="--c:#555">System ${gb(other)}</span></div>`;
+
+	// suggestions
+	const seenBig = LIBRARY.filter((x) => x.watched >= 1);
+	const dupDone = LIBRARY.filter((x) => x.torrent && x.torrent.copy && x.torrent.ratio >= 1);
+	const sugg = [];
+	if (DISK.dup > 0.5) sugg.push({ t: "Doppelte Kopien", s: `${dupDone.length} Torrents sind fertig geteilt – die Kopie in Downloads kann weg, die Filme bleiben.`, n: dupDone.reduce((a, x) => a + x.size, 0), b: "Aufräumen", go: dupFlow });
+	if (seenBig.length) sugg.push({ t: `${seenBig.length} gesehene Titel`, s: seenBig.map((x) => x.title).join(", "), n: seenBig.reduce((a, x) => a + freedBy(x), 0), b: "Ansehen", go: () => ((filter = "seen"), render()) });
+	const old = LIBRARY.filter((x) => x.watched === 0 && Date.parse(x.added) < Date.parse("2026-07-18"));
+	if (old.length) sugg.push({ t: "Lange nicht geschaut", s: `${old.map((x) => x.title).join(", ")} – seit über 3 Monaten da, nie angefangen.`, n: old.reduce((a, x) => a + freedBy(x), 0), b: "Löschen", go: () => deleteFlow(old, render) });
+	$("#sugg").innerHTML = sugg.map((x, i) => `<div class="sug"><div class="t">${esc(x.t)}</div><div class="s">${esc(x.s)}</div><div class="foot"><b class="num">${gb(x.n)}</b><button class="btn small" data-s="${i}">${x.b}</button></div></div>`).join("") || `<div class="faint sm">Alles aufgeräumt.</div>`;
+	$("#sugg").querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => sugg[b.dataset.s].go()));
+
+	// library: posters (started ones on top), a click opens the details
+	$("#chips").innerHTML = FILTERS.map(([k, l]) => `<button data-f="${k}" class="${filter === k ? "on" : ""}">${l}</button>`).join("");
+	$("#chips").querySelectorAll("button").forEach((b) => (b.onclick = () => ((filter = b.dataset.f), render())));
+	const w = words($("#q").value);
+	let list = LIBRARY.filter((x) => w.every((p) => x.title.toLowerCase().includes(p)));
+	if (filter === "movie" || filter === "series") list = list.filter((x) => x.type === filter);
+	if (filter === "seen") list = list.filter((x) => x.watched >= 1);
+	list = filter === "big" ? list.sort((a, b) => freedBy(b) - freedBy(a)) : list.sort((a, b) => b.added.localeCompare(a.added));
+	const started = filter === "all" && !w.length ? list.filter((x) => x.watched > 0 && x.watched < 1) : [];
+	$("#lib").innerHTML = `${started.length ? `<div class="sub-h">Angefangen</div><div class="row">${started.map(card).join("")}</div><div class="sub-h">Weitere</div>` : ""}
+		<div class="row">${list.filter((x) => !started.includes(x)).map(card).join("") || `<div class="sm faint">Nichts gefunden</div>`}</div>`;
+	$("#lib").querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => openDetail(inLibrary(b.dataset.id))));
+
+	drawQb();
+}
+
+function card(x) {
+	const t = TORRENTS.find((t) => t.lib === x.id);
+	const loading = t && t.done < 1;
+	const prog = loading ? `<div class="prog"><i style="width:${t.done * 100}%"></i></div>` : x.watched > 0 && x.watched < 1 ? `<div class="prog"><i style="width:${x.watched * 100}%"></i></div>` : "";
+	const badge = loading ? `<span class="tag dl-badge" style="color:${STATE[t.state][1]}">${t.state === "down" ? `${Math.round(t.done * 100)} %` : STATE[t.state][0].split(" ")[0]}</span>` : x.watched >= 1 ? `<span class="tag ok dl-badge">✓</span>` : "";
+	return `<button class="pc" data-id="${x.id}">${posterHtml(x, prog)}${badge}<div class="tt">${esc(x.title)}</div><div class="ss"><span>${x.year} · ${x.type === "movie" ? "Film" : "Serie"}</span><span class="num">${gb(x.size)}</span></div></button>`;
+}
+
+function openDetail(x) {
+	if (!x) return drawer.classList.remove("open");
+	const tor = TORRENTS.find((t) => t.lib === x.id);
+	drawer.innerHTML = `<button class="x" onclick="drawer.classList.remove('open')">✕</button>
+		<div class="top">${posterHtml(x)}<div style="padding-top:4px"><div>${typeTag(x)}</div><h3 style="margin-top:8px">${esc(x.title)}</h3><div class="sm muted">${x.year}${x.runtime ? ` · ${x.runtime}` : ""}</div>
+		${x.watching ? `<div class="sm" style="color:var(--accent);margin-top:8px">▶ ${x.watching} schaut gerade</div>` : ""}</div></div>
+		${x.seasons && x.seasons.length ? `<div class="seasons">${x.seasons.map((s) => `<div class="season"><span style="width:62px">Staffel ${s.n}</span><div class="bar"><i style="width:${(s.have / s.of) * 100}%;background:${s.have === s.of ? "var(--ok)" : "var(--warn)"}"></i></div><span class="faint num" style="width:44px;text-align:right">${s.have}/${s.of}</span></div>`).join("")}</div>` : ""}
+		<div class="kv">
+			<div><span>Gesehen</span><span>${seen(x)}</span></div>
+			<div><span>Qualität</span><span>${esc(x.quality || "–")}</span></div>
+			<div><span>Hinzugefügt</span><span>${ago(x.added)}</span></div>
+			<div><span>Grösse</span><span class="num">${gb(x.size)}</span></div>
+			${tor && tor.done >= 1 ? `<div><span>Kopie in Downloads</span><span class="num" style="color:var(--warn)">${gb(x.size)}</span></div>` : ""}
+		</div>
+		${tor ? `<div class="sm muted" style="margin:18px 2px 6px;font-weight:600">Torrent</div><div class="dtor" id="dtor">${torrentRow(tor, { compact: true })}</div>` : ""}
+		<div style="display:flex;gap:8px;margin-top:18px"><button class="btn danger" id="del" style="flex:1;justify-content:center">Überall löschen · ${gb(freedBy(x))}</button></div>
+		<div class="sm faint" style="margin-top:10px">Löscht in ${appOf(x)}, qBittorrent und Jellyfin auf einmal.</div>`;
+	$("#del", drawer).onclick = () => deleteFlow(x, () => (drawer.classList.remove("open"), render()));
+	if (tor) bindTorrents($("#dtor", drawer), () => (render(), openDetail(inLibrary(x.id))));
+	drawer.classList.add("open");
+}
+document.addEventListener("keydown", (e) => e.key === "Escape" && drawer.classList.remove("open"));
+
+// qBittorrent in the sidebar: speeds, switches, every torrent
+function drawQb() {
+	const box = $("#loading");
+	const order = { down: 0, meta: 0, stalled: 1, seed: 2, paused: 3 };
+	const active = TORRENTS.filter((t) => ["down", "meta", "stalled"].includes(t.state)).sort((a, b) => order[a.state] - order[b.state]);
+	const rest = TORRENTS.filter((t) => !active.includes(t)).sort((a, b) => order[a.state] - order[b.state]);
+	box.innerHTML = `<h3>qBittorrent</h3>${qbHead()}
+		<div class="grp">Lädt</div>${active.map((t) => torrentRow(t)).join("") || `<div class="sm faint" style="padding:8px 4px">Nichts wird geladen</div>`}
+		${rest.length ? `<div class="grp">Fertig · teilt oder pausiert</div>${rest.map((t) => torrentRow(t)).join("")}` : ""}`;
+	bindTorrents(box, render);
+}
+onTick(drawQb);
+// posters of what is loading show the progress
+onTick(() => TORRENTS.some((t) => t.lib && t.state === "down") && render());
+
+// ---------- search over everything (⌘K / Ctrl+K) ----------
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+document.querySelectorAll(".mod-k").forEach((k) => (k.textContent = IS_MAC ? "⌘K" : "Ctrl K"));
+const spot = $("#spot");
+const sq = $("#sq");
+let hits = [];
+let sel = 0;
+
+function openSpot() {
+	spot.hidden = false;
+	sq.select();
+	sq.focus();
+	drawSpot();
+}
+function closeSpot() {
+	spot.hidden = true;
+}
+
+// what you have first (opens the details), then what can be added
+function drawSpot() {
+	const text = sq.value;
+	const w = words(text);
+	const mine = w.length ? LIBRARY.filter((x) => w.every((p) => `${x.title} ${x.year}`.toLowerCase().includes(p))) : [];
+	const found = w.length ? catalogFor(text, drawSpot).filter((x) => !inLibrary(x.id)) : [];
+	hits = [...mine.map((x) => ({ x, mine: true })), ...found.map((x) => ({ x, mine: false }))];
+	sel = Math.min(sel, Math.max(0, hits.length - 1));
+	const row = (h, i) => {
+		const x = h.x;
+		const t = h.mine && TORRENTS.find((t) => t.lib === x.id);
+		const sub = h.mine
+			? [typeTag(x), `${x.year}`, gb(x.size), t && t.done < 1 ? `<span style="color:${STATE[t.state][1]}">${STATE[t.state][0]} ${Math.round(t.done * 100)} %</span>` : seen(x)].join(" · ")
+			: [typeTag(x), x.year, x.rating ? `★ ${x.rating}` : "", esc(x.about || "")].filter(Boolean).join(" · ");
+		const go = h.mine ? "Öffnen" : x.have ? `schon in ${appOf(x)}` : "+ Hinzufügen";
+		return `<div class="hit ${i === sel ? "sel" : ""}" data-i="${i}">${posterHtml(x)}<div class="grow"><div class="tt">${esc(x.title)}</div><div class="ss">${sub}</div></div><span class="go">${go}</span></div>`;
+	};
+	const mineN = mine.length;
+	$("#sres").innerHTML = !w.length
+		? `<div class="spot-sec" style="text-align:center;margin-top:30px">Sucht in deiner Bibliothek und in Radarr und Sonarr – Filme und Serien in einem</div>`
+		: `${mineN ? `<div class="spot-sec">In deiner Bibliothek</div><div class="spot-list">${hits.slice(0, mineN).map(row).join("")}</div>` : ""}
+			${hits.length > mineN ? `<div class="spot-sec">Hinzufügen</div><div class="spot-list">${hits.slice(mineN).map((h, i) => row(h, i + mineN)).join("")}</div>` : ""}
+			${LIVE.busy ? `<div class="spot-sec" style="text-align:center">Sucht in Radarr und Sonarr …</div>` : !hits.length ? `<div class="spot-sec" style="text-align:center">Nichts gefunden für «${esc(text)}»</div>` : ""}`;
+	$("#sres").querySelectorAll(".hit").forEach((el) => {
+		el.onclick = () => pick(Number(el.dataset.i));
+		el.onmousemove = () => {
+			if (sel === Number(el.dataset.i)) return;
+			sel = Number(el.dataset.i);
+			$("#sres").querySelectorAll(".hit").forEach((x) => x.classList.toggle("sel", x === el));
+		};
+	});
+}
+
+function pick(i) {
+	const h = hits[i];
+	if (!h) return;
+	if (h.mine) return closeSpot(), openDetail(inLibrary(h.x.id));
+	if (h.x.have) return toast(`${esc(h.x.title)} ist schon in ${appOf(h.x)}`);
+	addFlow(h.x, () => (closeSpot(), render()));
+}
+
+sq.oninput = () => ((sel = 0), drawSpot());
+sq.onkeydown = (e) => {
+	if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+		e.preventDefault();
+		sel = Math.max(0, Math.min(hits.length - 1, sel + (e.key === "ArrowDown" ? 1 : -1)));
+		drawSpot();
+		const el = $("#sres .hit.sel");
+		if (el) el.scrollIntoView({ block: "nearest" });
+	}
+	if (e.key === "Enter") pick(sel);
+};
+spot.onclick = (e) => e.target === spot && closeSpot();
+$("#openSpot").onclick = openSpot;
+document.addEventListener("keydown", (e) => {
+	if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+		e.preventDefault();
+		spot.hidden ? openSpot() : closeSpot();
+	} else if (e.key === "Escape" && !spot.hidden && !document.querySelector(".scrim")) closeSpot();
+	else if (e.key === "/" && spot.hidden && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) (e.preventDefault(), openSpot());
+});
+
+// only the second copy: torrents that are done seeding go, the library stays
+function dupFlow() {
+	const items = LIBRARY.filter((x) => x.torrent && x.torrent.copy && x.torrent.ratio >= 1);
+	const n = items.reduce((a, x) => a + x.size, 0);
+	const m = modal(`<h3>Doppelte Kopien aufräumen</h3><div class="sm muted" style="margin:6px 0 14px">Diese Torrents sind fertig geteilt. Ihre Kopie im Download-Ordner wird gelöscht – die Filme und Serien in Jellyfin bleiben.</div>
+		<div class="steps">${items.map((x) => `<div class="step">${typeTag(x)}<div class="grow"><div class="t">${esc(x.title)}</div><div class="s">Ratio ${x.torrent.ratio}</div></div><span class="st num">${gb(x.size)}</span></div>`).join("")}</div>
+		<div class="freed"><span class="muted">Wird frei</span><b class="num">${gb(n)}</b></div>
+		<div class="sm faint" style="margin-top:10px">Tipp: Mit Hardlinks bräuchte jeder Film nur einmal Platz – das richtet die Mediathek auf Wunsch ein.</div>
+		<div class="acts"><button class="btn" data-x>Abbrechen</button><button class="btn primary" data-go>Aufräumen</button></div>`);
+	$("[data-x]", m.el).onclick = m.close;
+	$("[data-go]", m.el).onclick = () => {
+		m.close();
+		for (const x of items) {
+			x.torrent = null;
+			const t = TORRENTS.findIndex((t) => t.lib === x.id);
+			if (t >= 0) TORRENTS.splice(t, 1);
+		}
+		DISK.used -= n;
+		DISK.dup -= n;
+		toast(`${gb(n)} frei – ${items.length} Torrents entfernt`);
+		render();
+	};
+}
+
+$("#q").oninput = render;
+render();
+protoNav("d.html");
+</script>
+</body>
+</html>
