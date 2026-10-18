@@ -248,14 +248,18 @@ kbd { font: 600 11px/1 inherit; padding: 4px 6px; border-radius: 6px; background
 .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #c9c9d1; transition: transform .15s; }
 .switch input:checked + span { background: var(--accent); }
 .switch input:checked + span::after { transform: translateX(16px); background: #0d1424; }
-.rules { display: grid; gap: 2px; background: var(--tile-2); border-radius: 14px; padding: 4px; margin-top: 16px; }
-.rule { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 11px; }
-.rule + .rule { border-top: 1px solid var(--line); border-radius: 0; }
+.rules { display: grid; background: var(--tile-2); border-radius: 14px; margin-top: 16px; }
+.rule { padding: 14px 16px; }
+.rule + .rule { border-top: 1px solid var(--line); }
+.rule-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .rule .t { font-weight: 600; }
-.rule .s { font-size: 12.5px; color: var(--muted); margin-top: 6px; line-height: 2; }
-.num-in { display: inline-block; padding: 3px 7px; border-radius: 8px; text-align: center; font-size: 12.5px; }
-.inl { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
-.inl input { accent-color: var(--accent); }
+.rule .d { font-size: 12.5px; color: var(--faint); margin-top: 2px; }
+.rule .s { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.rule .sep { width: 6px; }
+.rule.off .d, .rule.off .s { opacity: .45; }
+.num-in { padding: 5px 8px; border-radius: 8px; text-align: center; font-size: 13px; background: var(--tile-3); }
+.inl { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; background: var(--tile-3); cursor: pointer; }
+.inl input { accent-color: var(--accent); margin: 0; }
 .switch-row { display: flex; align-items: center; gap: 12px; cursor: pointer; }
 .keep-row { margin-top: 18px; background: var(--tile-2); border-radius: 14px; padding: 10px 14px; }
 .keep-pin { position: absolute; top: 7px; left: 7px; font-size: 13px; filter: grayscale(.2); }

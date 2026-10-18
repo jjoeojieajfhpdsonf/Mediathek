@@ -51,6 +51,7 @@ const STATE = {
 	paused: ["Pausiert", "var(--faint)"],
 	seed: ["Seeding", "var(--ok)"],
 	done: ["Fertig · pausiert", "var(--faint)"],
+	missing: ["Dateien fehlen", "var(--warn)"],
 	error: ["Fehler", "var(--bad)"]
 };
 const LOADING = ["down", "meta", "stalled", "queued", "checking", "paused"];
@@ -123,7 +124,7 @@ function shell() {
 	$("#app").innerHTML = `
 		<div class="topbar"><div class="brand">Mediathek${S.state.demo ? ` <span class="tag" style="margin-left:6px">Demo</span>` : ""}</div>
 			<button class="find-btn" id="openSpot"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Film oder Serie suchen …</span><kbd>${IS_MAC ? "⌘K" : "Ctrl K"}</kbd></button>
-			<button class="auto-btn ${S.state.auto ? "on" : ""}" id="openAuto" title="Automatik"><i></i>Automatik</button>
+			<button class="auto-btn ${S.state.auto ? "on" : ""}" id="openAuto" title="Autopilot"><i></i>Autopilot</button>
 			<button class="icon-btn" id="openSettings" title="Einstellungen" aria-label="Einstellungen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg></button>
 		</div>
 		<div class="errs" id="errs"></div>
@@ -203,11 +204,20 @@ function drawOverview() {
 	const sugg = [];
 	// second copies of finished torrents that have seeded enough
 	const dupDone = torrents().filter((t) => t.copy && t.item && t.done >= 1 && t.ratio >= 1);
-	if (dupDone.length) sugg.push({ t: "Doppelte Kopien", s: `${dupDone.length} ${dupDone.length === 1 ? "Torrent ist" : "Torrents sind"} fertig geteilt (Ratio ≥ 1) – die Kopie in Downloads kann weg, die Titel bleiben.`, n: dupDone.reduce((a, t) => a + t.size, 0), b: "Aufräumen", go: () => dupFlow(dupDone) });
+	if (dupDone.length) sugg.push({ t: "Doppelte Kopien", s: `${dupDone.length === 1 ? "Ein Film liegt" : `${dupDone.length} Filme liegen`} zweimal auf dem Server: in der Bibliothek und im Download-Ordner fürs Seeding. Die Download-Kopie kann weg, ${dupDone.length === 1 ? "der Film bleibt" : "die Filme bleiben"}.`, n: dupDone.reduce((a, t) => a + t.size, 0), b: "Aufräumen", go: () => dupFlow(dupDone) });
 	// finished torrents whose title is gone from Radarr and Sonarr: only taking space
 	const arrsOn = S.state.services.radarr || S.state.services.sonarr;
 	const orphans = arrsOn ? torrents().filter((t) => !t.item && t.done >= 1 && (!t.category || /radarr|sonarr|tv|movie|film|serie/i.test(t.category))) : [];
-	if (orphans.length) sugg.push({ t: orphans.length === 1 ? "1 verwaister Torrent" : `${orphans.length} verwaiste Torrents`, s: `${orphans.slice(0, 3).map((t) => t.title).join(", ")}${orphans.length > 3 ? " …" : ""} – nicht mehr in Radarr oder Sonarr, belegt nur noch Platz.`, n: orphans.reduce((a, t) => a + t.size, 0), b: "Entfernen", go: () => orphanFlow(orphans) });
+	const empty = torrents().filter((t) => t.state === "missing");
+	const stale = [...orphans, ...empty.filter((t) => !orphans.includes(t))];
+	if (stale.length)
+		sugg.push({
+			t: stale.length === 1 ? "1 überflüssiger Torrent" : `${stale.length} überflüssige Torrents`,
+			s: `${stale.slice(0, 3).map((t) => t.title).join(", ")}${stale.length > 3 ? " …" : ""} – ${orphans.length && empty.length ? "nicht mehr in Radarr oder Sonarr oder ohne Dateien" : orphans.length ? "nicht mehr in Radarr oder Sonarr, belegen nur noch Platz" : "ihre Dateien sind schon weg, qBittorrent kennt sie noch"}.`,
+			n: orphans.reduce((a, t) => a + t.size, 0),
+			b: "Entfernen",
+			go: () => orphanFlow(stale)
+		});
 	const seenAll = items().filter((x) => x.watched >= 1);
 	if (seenAll.length) sugg.push({ t: seenAll.length === 1 ? "1 gesehener Titel" : `${seenAll.length} gesehene Titel`, s: seenAll.slice(0, 4).map((x) => x.title).join(", ") + (seenAll.length > 4 ? " …" : ""), n: seenAll.reduce((a, x) => a + freedBy(x), 0), b: "Ansehen", go: () => ((S.filter = "seen"), drawLib(), $("#lib").scrollIntoView({ behavior: "smooth" })) });
 	const old = items().filter((x) => x.watched === 0 && x.hasFile && x.added && Date.now() - x.added > 90 * 864e5);
@@ -221,13 +231,14 @@ function drawOverview() {
 }
 
 function orphanFlow(list) {
-	const n = list.reduce((a, t) => a + t.size, 0);
-	const m = modal(`<h3>Verwaiste Torrents entfernen</h3><div class="sm muted" style="margin:6px 0 14px">Diese Torrents gehören zu keinem Titel mehr in Radarr oder Sonarr. Sie werden aus qBittorrent entfernt, mit ihren Dateien im Download-Ordner.</div>
-		<div class="steps">${list.map((t) => `<label class="step pick on" style="cursor:pointer"><input type="checkbox" data-h="${t.hash}" checked style="accent-color:var(--accent)"><div class="grow"><div class="t">${esc(t.title)}</div><div class="s">${esc(t.name)} · Ratio ${t.ratio}</div></div><span class="st num">${bytes(t.size)}</span></label>`).join("")}</div>
+	const size = (t) => (t.state === "missing" ? 0 : t.size);
+	const n = list.reduce((a, t) => a + size(t), 0);
+	const m = modal(`<h3>Überflüssige Torrents entfernen</h3><div class="sm muted" style="margin:6px 0 14px">Sie werden aus qBittorrent entfernt, mit ihren Dateien im Download-Ordner. Die Titel in der Bibliothek bleiben.</div>
+		<div class="steps">${list.map((t) => `<label class="step pick on" style="cursor:pointer"><input type="checkbox" data-h="${t.hash}" checked style="accent-color:var(--accent)"><div class="grow"><div class="t">${esc(t.title)}</div><div class="s">${t.state === "missing" ? "Dateien schon weg" : "nicht mehr in Radarr oder Sonarr"} · Ratio ${t.ratio}</div></div><span class="st num">${size(t) ? bytes(size(t)) : ""}</span></label>`).join("")}</div>
 		<div class="freed"><span class="muted">Wird frei</span><b class="num" id="ofree">${bytes(n)}</b></div>
 		<div class="acts"><button class="btn" data-x>Abbrechen</button><button class="btn solid-danger" data-go>Entfernen</button></div>`);
 	const chosen = () => list.filter((t) => m.el.querySelector(`[data-h="${t.hash}"]`).checked);
-	m.el.querySelectorAll("[data-h]").forEach((c) => (c.onchange = () => ($("#ofree", m.el).textContent = bytes(chosen().reduce((a, t) => a + t.size, 0)))));
+	m.el.querySelectorAll("[data-h]").forEach((c) => (c.onchange = () => ($("#ofree", m.el).textContent = bytes(chosen().reduce((a, t) => a + size(t), 0)))));
 	$("[data-x]", m.el).onclick = m.close;
 	$("[data-go]", m.el).onclick = async (e) => {
 		const pick = chosen();
@@ -250,7 +261,7 @@ function orphanFlow(list) {
 
 function dupFlow(list) {
 	const n = list.reduce((a, t) => a + t.size, 0);
-	const m = modal(`<h3>Doppelte Kopien aufräumen</h3><div class="sm muted" style="margin:6px 0 14px">Diese Torrents sind fertig geteilt. Sie werden aus qBittorrent entfernt und ihre Kopie im Download-Ordner gelöscht – die Titel in der Bibliothek bleiben.</div>
+	const m = modal(`<h3>Doppelte Kopien aufräumen</h3><div class="sm muted" style="margin:6px 0 14px;line-height:1.55">Diese Filme liegen <b>zweimal</b> auf dem Server: einmal in der Bibliothek – die schaust du in Jellyfin – und einmal im Download-Ordner, von wo qBittorrent sie weiter an andere verteilt (Seeding). Genug verteilt ist schon (Ratio über 1).<br><br>Aufräumen löscht nur die Kopie im Download-Ordner und beendet das Seeding. <b>Die Filme in der Bibliothek bleiben.</b></div>
 		<div class="steps">${list.map((t) => `<div class="step">${typeTag(t)}<div class="grow"><div class="t">${esc(t.title)}</div><div class="s">Ratio ${t.ratio}</div></div><span class="st num">${bytes(t.size)}</span></div>`).join("")}</div>
 		<div class="freed"><span class="muted">Wird frei</span><b class="num">${bytes(n)}</b></div>
 		<div class="acts"><button class="btn" data-x>Abbrechen</button><button class="btn primary" data-go>Aufräumen</button></div>`);
@@ -351,7 +362,7 @@ function openDetail(id, keep) {
 			${x.next ? `<div><span>Nächste Folge</span><span>${new Date(x.next).toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "short" })}</span></div>` : ""}
 		</div>
 		<div id="dtorWrap"></div>
-		<label class="switch-row keep-row"><div class="grow"><div>Behalten</div><div class="sm faint">Die Automatik löscht diesen Titel nie</div></div><span class="switch"><input type="checkbox" id="keep" ${(S.state.keep || []).includes(x.id) ? "checked" : ""}><span></span></span></label>
+		<label class="switch-row keep-row"><div class="grow"><div>Behalten</div><div class="sm faint">Der Autopilot löscht diesen Titel nie</div></div><span class="switch"><input type="checkbox" id="keep" ${(S.state.keep || []).includes(x.id) ? "checked" : ""}><span></span></span></label>
 		<div style="display:flex;gap:8px;margin-top:14px"><button class="btn danger" id="del" style="flex:1;justify-content:center">Überall löschen${freedBy(x) ? ` · ${bytes(freedBy(x))}` : ""}</button></div>
 		<div class="sm faint" style="margin-top:10px">Löscht in ${appOf(x)}${S.state.services.qbittorrent ? ", qBittorrent" : ""}${S.state.services.jellyfin ? " und Jellyfin" : ""} auf einmal – mit den Dateien.</div>`;
 	$("#dx", drawer).onclick = closeDetail;
@@ -440,12 +451,13 @@ function torrentRow(t, compact) {
 		: t.state === "meta" || t.state === "queued" || t.state === "checking" ? `${Math.round(t.done * 100)} %`
 		: t.state === "paused" ? `${Math.round(t.done * 100)} %`
 		: t.state === "done" ? `Ratio ${t.ratio}`
+		: t.state === "missing" ? (t.item && itemById(t.item) && itemById(t.item).hasFile ? "Kopie in Downloads gelöscht – der Titel ist in der Bibliothek" : "Dateien in Downloads gelöscht")
 		: "";
 	const paused = t.state === "paused" || t.state === "done";
 	return `<div class="tor" data-tor="${t.hash}">
 		<div class="tor-main"><div class="tor-t"><span class="tor-name">${esc(t.title || t.name)}</span>${t.type ? typeTag(t) : t.category ? `<span class="tag">${esc(t.category)}</span>` : ""}</div>
 			<div class="tor-s"><span style="color:${color}">${label}</span>${sub ? ` · ${sub}` : ""}</div>
-			${t.done < 1 ? `<div class="bar" style="height:4px;margin-top:7px"><i style="width:${(t.done * 100).toFixed(1)}%;background:${color}"></i></div>` : ""}</div>
+			${t.done < 1 && t.state !== "missing" ? `<div class="bar" style="height:4px;margin-top:7px"><i style="width:${(t.done * 100).toFixed(1)}%;background:${color}"></i></div>` : ""}</div>
 		${compact ? "" : `<span class="tor-size num">${bytes(t.size)}</span>`}
 		<button class="tor-btn" data-toggle="${t.hash}" data-paused="${paused ? 1 : ""}" title="${paused ? "Fortsetzen" : "Pausieren"}">${paused ? "▶" : "❚❚"}</button>
 		<button class="tor-btn" data-detail="${t.hash}" title="Details">⋯</button>
@@ -458,7 +470,7 @@ function drawQb() {
 	if (!S.state.services.qbittorrent) return (box.innerHTML = `<h3>qBittorrent</h3><div class="sm faint">Nicht eingerichtet – in den <a href="#" id="qbset" style="text-decoration:underline">Einstellungen</a> verbinden.</div>`), ($("#qbset").onclick = (e) => (e.preventDefault(), settingsSheet(false)));
 	if (S.torError) return (box.innerHTML = `<h3>qBittorrent</h3><div class="sm bad-text">${esc(S.torError)}</div>`);
 	if (!S.tor) return (box.innerHTML = `<h3>qBittorrent</h3><div class="sm faint">Lädt …</div>`);
-	const order = { down: 0, meta: 1, checking: 1, queued: 2, stalled: 2, paused: 3, error: 0, seed: 4, done: 5 };
+	const order = { down: 0, meta: 1, checking: 1, queued: 2, stalled: 2, paused: 3, error: 0, seed: 4, done: 5, missing: 6 };
 	const list = [...torrents()].sort((a, b) => order[a.state] - order[b.state] || (b.added || 0) - (a.added || 0));
 	const active = list.filter((t) => LOADING.includes(t.state) || t.state === "error");
 	const rest = list.filter((t) => !active.includes(t));
@@ -742,13 +754,13 @@ async function autoSheet() {
 	const sw = (id, on) => `<span class="switch"><input type="checkbox" id="${id}" ${on ? "checked" : ""}><span></span></span>`;
 	const n = (id, v, w = 64, step = 1) => `<input class="input num-in" id="${id}" type="number" min="0" step="${step}" value="${v}" style="width:${w}px">`;
 	const m = modal(`
-		<div style="display:flex;align-items:center;gap:12px"><h3 style="flex:1">Automatik</h3>${sw("a-on", r.enabled)}</div>
+		<div style="display:flex;align-items:center;gap:12px"><h3 style="flex:1">Autopilot</h3>${sw("a-on", r.enabled)}</div>
 		<div class="sm muted" style="margin-top:6px">Hält den Server sauber – alle 15 Minuten. Titel mit «Behalten», angefangene und gerade laufende werden nie angefasst.</div>
 		<div class="rules">
-			<div class="rule"><div class="grow"><div class="t">Fertig geteilte Torrents entfernen</div><div class="s">ab Ratio ${n("s-ratio", r.seeded.ratio, 60, 0.1)} oder nach ${n("s-days", r.seeded.days, 60)} Tagen · Kopie in Downloads weg, Titel bleibt</div></div>${sw("s-on", r.seeded.on)}</div>
-			<div class="rule"><div class="grow"><div class="t">Gesehenes löschen</div><div class="s">${n("w-days", r.watched.days, 60)} Tage nach dem Fertigschauen · <label class="inl"><input type="checkbox" id="w-movies" ${r.watched.movies ? "checked" : ""}> Filme</label> <label class="inl"><input type="checkbox" id="w-series" ${r.watched.series ? "checked" : ""}> Serien</label></div></div>${sw("w-on", r.watched.on)}</div>
-			<div class="rule"><div class="grow"><div class="t">Platz schaffen</div><div class="s">unter ${n("p-gb", r.space.minGB, 70)} GB frei: Gesehenes löschen, das am längsten her ist</div></div>${sw("p-on", r.space.on)}</div>
-			<div class="rule"><div class="grow"><div class="t">Hängende Downloads ersetzen</div><div class="s">nach ${n("t-hours", r.stalled.hours, 60)} Stunden ohne vollständige Quelle anderen Release suchen</div></div>${sw("t-on", r.stalled.on)}</div>
+			<div class="rule" data-rule="s"><div class="rule-top"><div class="t">Fertig geteilte Torrents entfernen</div>${sw("s-on", r.seeded.on)}</div><div class="d">Die Kopie im Download-Ordner wird gelöscht, der Titel bleibt in der Bibliothek.</div><div class="s"><span>ab Ratio</span>${n("s-ratio", r.seeded.ratio, 64, 0.1)}<span>oder nach</span>${n("s-days", r.seeded.days, 64)}<span>Tagen</span></div></div>
+			<div class="rule" data-rule="w"><div class="rule-top"><div class="t">Gesehenes löschen</div>${sw("w-on", r.watched.on)}</div><div class="d">Überall gelöscht, wie mit «Überall löschen».</div><div class="s">${n("w-days", r.watched.days, 64)}<span>Tage nach dem Fertigschauen</span><span class="sep"></span><label class="inl"><input type="checkbox" id="w-movies" ${r.watched.movies ? "checked" : ""}>Filme</label><label class="inl"><input type="checkbox" id="w-series" ${r.watched.series ? "checked" : ""}>Serien</label></div></div>
+			<div class="rule" data-rule="p"><div class="rule-top"><div class="t">Platz schaffen</div>${sw("p-on", r.space.on)}</div><div class="d">Gesehenes löschen, das am längsten her ist – bis wieder genug frei ist.</div><div class="s"><span>wenn weniger als</span>${n("p-gb", r.space.minGB, 72)}<span>GB frei sind</span></div></div>
+			<div class="rule" data-rule="t"><div class="rule-top"><div class="t">Hängende Downloads ersetzen</div>${sw("t-on", r.stalled.on)}</div><div class="d">${"Radarr bzw. Sonarr sperrt den Release und sucht einen anderen."}</div><div class="s"><span>nach</span>${n("t-hours", r.stalled.hours, 64)}<span>Stunden ohne vollständige Quelle</span></div></div>
 		</div>
 		<div class="sm muted" style="margin:18px 2px 6px;font-weight:600">Beim nächsten Lauf</div>
 		<div id="a-plan"></div>
@@ -772,6 +784,9 @@ async function autoSheet() {
 			: `<div class="sm faint" style="padding:8px 10px;background:var(--tile-2);border-radius:14px">Nichts zu tun</div>`;
 	};
 	drawPlan(d.plan);
+	const dim = () => m.el.querySelectorAll("[data-rule]").forEach((el) => el.classList.toggle("off", !$(`#${el.dataset.rule}-on`, m.el).checked));
+	dim();
+	m.el.querySelectorAll(".rule .switch input").forEach((i) => i.addEventListener("change", dim));
 	// changing a rule shows its effect right away (saved, then planned again)
 	let timer;
 	m.el.querySelectorAll(".rules input, #a-on").forEach((i) => i.addEventListener("input", () => {
@@ -791,7 +806,7 @@ async function autoSheet() {
 			S.state.auto = res.rules.enabled;
 			$("#openAuto").classList.toggle("on", S.state.auto);
 			m.close();
-			toast(S.state.auto ? "Automatik ist an" : "Automatik ist aus");
+			toast(S.state.auto ? "Autopilot ist an" : "Autopilot ist aus");
 		} catch (err) {
 			toast(esc(err.message), true);
 		}
