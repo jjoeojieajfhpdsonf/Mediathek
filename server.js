@@ -91,6 +91,33 @@ route("POST", "/api/items/:id/keep", (b, p) => {
 	auto.setKeep(p.id, !!b.keep);
 	return { keep: [...auto.keep()] };
 });
+// a title that hasn't been loaded: what the search finds, load one, or search in another language
+const itemArr = (id) => {
+	const m = /^(movie|series)-(\d+)$/.exec(id);
+	if (!m) throw new UserError("Invalid title");
+	const a = m[1] === "movie" ? media.c.radarr : media.c.sonarr;
+	if (!a) throw new UserError(`${m[1] === "movie" ? "Radarr" : "Sonarr"} is not set up`);
+	return [a, Number(m[2])];
+};
+route("GET", "/api/items/:id/releases", async (b, p, q) => {
+	const [a, num] = itemArr(p.id);
+	const season = q.get("season");
+	const [releases, profile] = await Promise.all([a.releases(num, season !== null ? Number(season) : undefined), a.profileOf(num).catch(() => null)]);
+	return { releases, profile };
+});
+route("POST", "/api/items/:id/grab", async (b, p) => {
+	const [a] = itemArr(p.id);
+	if (!b.guid) throw new UserError("Which release?");
+	await a.grab(String(b.guid), b.indexerId);
+	media.cache = null;
+	return { ok: true };
+});
+route("POST", "/api/items/:id/reprofile", async (b, p) => {
+	const [a, num] = itemArr(p.id);
+	const name = await a.reprofile(num, ["720p", "1080p", "4k"].includes(b.quality) ? b.quality : "1080p", ["de", "en", "orig"].includes(b.lang) ? b.lang : "orig");
+	media.cache = null;
+	return { profile: name };
+});
 route("GET", "/api/settings", () => config.view());
 // a login instead of a key: Radarr and Sonarr hand out their key, Jellyfin a token – the password
 // itself is never kept

@@ -347,7 +347,8 @@ function openDetail(id, keep) {
 		return drawer.classList.remove("open");
 	}
 	S.open = id;
-	if (keep && !drawer.classList.contains("open")) return;
+	// a refresh while it's open: only the torrent part changes (the search results stay)
+	if (keep) return drawer.classList.contains("open") ? drawDrawerTorrents() : undefined;
 	const seasons = x.seasons && x.seasons.length ? `<div class="seasons">${x.seasons.map((s) => `<div class="season"><span style="width:62px">Staffel ${s.n}</span><div class="bar"><i style="width:${s.of ? (s.have / s.of) * 100 : 0}%;background:${s.have >= s.of ? "var(--ok)" : "var(--warn)"}"></i></div><span class="faint num" style="width:48px;text-align:right">${s.have}/${s.of}</span></div>`).join("")}</div>` : "";
 	drawer.innerHTML = `<button class="x" id="dx" aria-label="Schliessen">✕</button>
 		<div class="top">${posterHtml(x)}<div style="padding-top:4px;min-width:0"><div>${typeTag(x)}</div><h3 style="margin-top:8px">${esc(x.title)}</h3><div class="sm muted">${[x.year, runtime(x.runtime)].filter(Boolean).join(" · ")}</div>
@@ -362,6 +363,7 @@ function openDetail(id, keep) {
 			${x.next ? `<div><span>Nächste Folge</span><span>${new Date(x.next).toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "short" })}</span></div>` : ""}
 		</div>
 		<div id="dtorWrap"></div>
+		${missingSeason(x) !== null ? `<div id="relWrap"></div>` : ""}
 		<label class="switch-row keep-row"><div class="grow"><div>Behalten</div><div class="sm faint">Der Autopilot löscht diesen Titel nie</div></div><span class="switch"><input type="checkbox" id="keep" ${(S.state.keep || []).includes(x.id) ? "checked" : ""}><span></span></span></label>
 		<div style="display:flex;gap:8px;margin-top:14px"><button class="btn danger" id="del" style="flex:1;justify-content:center">Überall löschen${freedBy(x) ? ` · ${bytes(freedBy(x))}` : ""}</button></div>
 		<div class="sm faint" style="margin-top:10px">Löscht in ${appOf(x)}${S.state.services.qbittorrent ? ", qBittorrent" : ""}${S.state.services.jellyfin ? " und Jellyfin" : ""} auf einmal – mit den Dateien.</div>`;
@@ -378,6 +380,107 @@ function openDetail(id, keep) {
 	drawDrawerTorrents();
 	failedPosters(drawer);
 	drawer.classList.add("open");
+	if (missingSeason(x) !== null && !keep) loadReleases(x);
+}
+
+// what isn't loaded yet: a movie without file, or the first season of a series with episodes missing
+function missingSeason(x) {
+	// something is already loading: nothing to explain
+	if (torrentsOf(x).some((t) => ["down", "meta", "queued", "checking"].includes(t.state))) return null;
+	if (x.type === "movie") return x.hasFile ? null : -1;
+	const s = (x.seasons || []).find((s) => s.monitored && s.have < s.of);
+	return s ? s.n : null;
+}
+const LANG_OF = { Deutsch: "de", Englisch: "en", Original: "orig" };
+const LANG_NAME = { de: "Deutsch", en: "Englisch", orig: "Original" };
+const profileParts = (name) => {
+	const m = /^Mediathek (720p|1080p|4K) (Deutsch|Englisch|Original)$/.exec(name || "");
+	return m ? { quality: m[1] === "4K" ? "4k" : m[1], lang: LANG_OF[m[2]] } : null;
+};
+
+// asks Radarr/Sonarr what a search finds right now and says why nothing was loaded
+async function loadReleases(x) {
+	const box = $("#relWrap");
+	if (!box) return;
+	const season = missingSeason(x);
+	const head = `<div class="sm muted" style="margin:18px 2px 6px;font-weight:600">${x.type === "movie" ? "Noch nicht geladen" : `Staffel ${season} unvollständig`}</div>`;
+	box.innerHTML = `${head}<div class="relbox"><div class="sm faint">Fragt ${appOf(x)}, was die Suche findet …</div></div>`;
+	let d;
+	try {
+		d = await api("GET", `/api/items/${x.id}/releases${x.type === "series" ? `?season=${season}` : ""}`);
+	} catch (err) {
+		if ($("#relWrap") === box) box.innerHTML = `${head}<div class="relbox"><div class="sm bad-text">${esc(err.message)}</div></div>`;
+		return;
+	}
+	if (S.open !== x.id || $("#relWrap") !== box) return;
+	const ok = d.releases.filter((r) => !r.rejected);
+	const lang = d.releases.filter((r) => r.rejected && r.reasons.some((m) => /is wanted, but found|language/i.test(m)));
+	const cur = profileParts(d.profile);
+	const wanted = cur ? LANG_NAME[cur.lang] : null;
+	let msg;
+	if (!d.releases.length) msg = `Die Suche findet gerade nichts. ${appOf(x)} sucht regelmässig weiter.`;
+	else if (ok.length) msg = `${ok.length} passende ${ok.length === 1 ? "Release" : "Releases"} – ${appOf(x)} lädt den besten, sobald er an der Reihe ist. Du kannst auch selbst einen wählen.`;
+	else if (lang.length) msg = `${d.releases.length} gefunden, aber ${lang.length === d.releases.length ? "keiner" : "kaum einer"} ${wanted ? `auf ${wanted}` : "in der gewünschten Sprache"}. Deine Indexer haben vor allem englische Releases.`;
+	else msg = `${d.releases.length} gefunden, aber keiner passt zum Profil${d.profile ? ` «${esc(d.profile)}»` : ""}.`;
+	const other = cur ? ["orig", "en", "de"].filter((l) => l !== cur.lang) : ["orig", "en"];
+	box.innerHTML = `${head}<div class="relbox"><div class="sm" style="line-height:1.5">${msg}</div>
+		<div class="relacts">${!ok.length && d.releases.length ? other.map((l) => `<button class="btn small" data-lang="${l}">Auf ${LANG_NAME[l]} suchen</button>`).join("") : ""}${d.releases.length ? `<button class="btn small" data-all>Alle ${d.releases.length} ansehen</button>` : ""}</div></div>`;
+	box.querySelectorAll("[data-lang]").forEach((b) => (b.onclick = async () => {
+		b.classList.add("busy");
+		try {
+			const r = await api("POST", `/api/items/${x.id}/reprofile`, { lang: b.dataset.lang, quality: cur ? cur.quality : "1080p" });
+			toast(`Profil «${esc(r.profile)}» – ${appOf(x)} sucht neu`);
+			await sleep(4000);
+			await loadLib(true);
+			loadReleases(x);
+		} catch (err) {
+			toast(esc(err.message), true);
+			b.classList.remove("busy");
+		}
+	}));
+	const all = $("[data-all]", box);
+	if (all) all.onclick = () => releasesSheet(x, d.releases);
+}
+
+// Radarr's and Sonarr's reasons, in German where they're common
+const LANGS = { German: "Deutsch", English: "Englisch", French: "Französisch", Spanish: "Spanisch", Italian: "Italienisch", Hindi: "Hindi", Japanese: "Japanisch", Korean: "Koreanisch", Russian: "Russisch", Portuguese: "Portugiesisch", Turkish: "Türkisch", Dutch: "Niederländisch", Polish: "Polnisch", Unknown: "unbekannt", Original: "Original" };
+const langDe = (list) => list.split(/,\s*/).map((l) => LANGS[l.trim()] || l.trim()).join(", ");
+function reasonDe(r) {
+	let m;
+	if ((m = /^(.+?) is wanted, but found (.+)$/i.exec(r))) return `Sprache: ${langDe(m[1])} gewünscht, ${langDe(m[2])} gefunden`;
+	if ((m = /^(.+?) is not wanted in profile$/i.exec(r))) return `${m[1]} ist nicht im Profil`;
+	if (/hardcode subs found/i.test(r)) return "Eingebrannte Untertitel";
+	if ((m = /^Not enough seeders: (\d+)/i.exec(r))) return `Zu wenige Seeds (${m[1]})`;
+	if (/blocklist/i.test(r)) return "Gesperrt (Blocklist)";
+	if (/existing file.*(meets|better)/i.test(r)) return "Vorhandene Datei ist schon gut genug";
+	if (/custom format score/i.test(r)) return "Format-Bewertung zu tief";
+	if (/size/i.test(r) && /(too|maximum|minimum)/i.test(r)) return "Grösse passt nicht";
+	return r;
+}
+
+// every release the search found, the rejected ones with the reason – any can be loaded
+function releasesSheet(x, list) {
+	const age = (d) => (d === null || d === undefined ? "" : d < 1 ? "heute" : d < 60 ? `${Math.round(d)} Tage` : `${Math.round(d / 30)} Mon.`);
+	const m = modal(`<h3>${esc(x.title)} – Releases</h3><div class="sm muted" style="margin:6px 0 12px">Was ${appOf(x)} gerade findet. Abgelehnte kannst du trotzdem laden.</div>
+		<div class="rels">${list.map((r, i) => `<div class="rel ${r.rejected ? "rej" : ""}"><div class="grow"><div class="t">${esc(r.title)}</div>
+			<div class="s">${[r.quality, bytes(r.size), r.languages.map((l) => LANGS[l] || l).join(" + "), r.seeders !== null ? `${r.seeders} Seeds` : "", r.indexer, age(r.age)].filter(Boolean).map(esc).join(" · ")}</div>
+			${r.rejected ? `<div class="s why">${esc(r.reasons.slice(0, 2).map(reasonDe).join(" · "))}</div>` : ""}</div>
+			<button class="btn small ${r.rejected ? "" : "primary"}" data-i="${i}">${r.rejected ? "Trotzdem laden" : "Laden"}</button></div>`).join("")}</div>`, "wide");
+	m.el.style.width = "min(760px, 100%)";
+	m.el.querySelectorAll("[data-i]").forEach((b) => (b.onclick = async () => {
+		const r = list[Number(b.dataset.i)];
+		b.classList.add("busy");
+		try {
+			await api("POST", `/api/items/${x.id}/grab`, { guid: r.guid, indexerId: r.indexerId });
+			m.close();
+			toast("Wird geladen – erscheint gleich bei qBittorrent");
+			await sleep(2500);
+			await Promise.all([loadTor(), loadLib(true)]);
+		} catch (err) {
+			toast(esc(err.message), true);
+			b.classList.remove("busy");
+		}
+	}));
 }
 function closeDetail() {
 	S.open = null;

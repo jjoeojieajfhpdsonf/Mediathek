@@ -263,3 +263,17 @@ kbd { font: 600 11px/1 inherit; padding: 4px 6px; border-radius: 6px; background
 .switch-row { display: flex; align-items: center; gap: 12px; cursor: pointer; }
 .keep-row { margin-top: 18px; background: var(--tile-2); border-radius: 14px; padding: 10px 14px; }
 .keep-pin { position: absolute; top: 7px; left: 7px; font-size: 13px; filter: grayscale(.2); }
+
+/* not loaded yet: what the search finds */
+.relbox { background: var(--tile-2); border-radius: 14px; padding: 12px 14px; }
+.relacts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.relacts:empty { display: none; }
+.rels { display: grid; gap: 2px; background: var(--tile-2); border-radius: 14px; padding: 4px; max-height: 60vh; overflow: auto; }
+.rel { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; }
+.rel + .rel { border-top: 1px solid var(--line); border-radius: 0; }
+.rel .grow { flex: 1; min-width: 0; }
+.rel .t { font-size: 13px; font-weight: 560; word-break: break-word; }
+.rel .s { font-size: 12px; color: var(--faint); margin-top: 3px; }
+.rel .why { color: #d9a85a; }
+.rel.rej .t { color: var(--muted); }
+.keep-row .grow { flex: 1; min-width: 0; }
