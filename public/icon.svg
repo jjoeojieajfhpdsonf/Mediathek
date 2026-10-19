@@ -1,1 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#17171b"/><rect x="13" y="14" width="16" height="36" rx="4" fill="#ffc230"/><rect x="33" y="14" width="18" height="16" rx="4" fill="#35c5f4"/><rect x="33" y="34" width="18" height="16" rx="4" fill="#9dbcff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+	<defs>
+		<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26262e"/><stop offset="1" stop-color="#141418"/></linearGradient>
+		<linearGradient id="front" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd25e"/><stop offset="1" stop-color="#f5a623"/></linearGradient>
+	</defs>
+	<rect width="64" height="64" rx="15" fill="url(#bg)"/>
+	<!-- three posters fanned out, the front one with a play button -->
+	<rect x="14" y="15" width="20" height="30" rx="4" fill="#35c5f4" transform="rotate(-14 24 30)"/>
+	<rect x="30" y="15" width="20" height="30" rx="4" fill="#b18cff" transform="rotate(14 40 30)"/>
+	<rect x="21" y="17" width="22" height="32" rx="4.5" fill="url(#front)"/>
+	<path d="M29 27.5v11l9-5.5z" fill="#1a1a20"/>
+</svg>

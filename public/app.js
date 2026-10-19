@@ -152,7 +152,7 @@ function shell() {
 	$("#app").innerHTML = `
 		<div class="app">
 			<header class="hd">
-				<div class="logo"><svg width="30" height="30" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#222228"/><rect x="13" y="14" width="16" height="36" rx="4" fill="#ffc230"/><rect x="33" y="14" width="18" height="16" rx="4" fill="#35c5f4"/><rect x="33" y="34" width="18" height="16" rx="4" fill="#b18cff"/></svg>Mediathek${S.state.demo ? ` <span class="tag" style="margin-left:2px">Demo</span>` : ""}</div>
+				<div class="logo"><img src="icon.svg" width="32" height="32" alt="">Mediathek${S.state.demo ? ` <span class="tag" style="margin-left:2px">Demo</span>` : ""}</div>
 				<button class="hsearch" id="openSpot">${icon("search", 15)}<span>Film oder Serie suchen …</span><kbd>${IS_MAC ? "⌘K" : "Ctrl K"}</kbd></button>
 				<div class="hicons">
 					<button title="Aktivität" id="hAct">${icon("act")}<span class="badge" id="hBadge" hidden></span></button>
@@ -541,7 +541,7 @@ function summarize(d, cur, x) {
 	if (!list.length) return { kind: "", msg: `Die Suche findet gerade nichts. ${appOf(x)} sucht regelmässig weiter.`, acts: [] };
 	if (ok.length) return { kind: "good", msg: `${ok.length} passende ${ok.length === 1 ? "Release" : "Releases"} – ${appOf(x)} lädt den besten, er erscheint gleich unter Aktivität.`, acts: [{ all: true }] };
 	if (inLang.length && qs.length)
-		return { kind: "warn", msg: `Auf ${lname} gibt es ${x.title ? esc(x.title) : "ihn"} nur in ${qs.map((q) => QNAME[q]).join(" oder ")} (${inLang.length} ${inLang.length === 1 ? "Release" : "Releases"}).`, acts: [...qs.map((q) => ({ quality: q, label: `In ${QNAME[q]} laden` })), ...langs.slice(0, 1).map((l) => ({ lang: l })), { all: true }] };
+		return { kind: "warn", msg: `Auf ${lname} gibt es ${x.title ? esc(x.title) : "ihn"} nur in ${qs.map((q) => QNAME[q]).join(" oder ")} (${inLang.length} ${inLang.length === 1 ? "Release" : "Releases"}, ab ${bytes(Math.min(...inLang.map((r) => r.size || Infinity)))}).`, acts: [...qs.map((q) => ({ quality: q, label: `In ${QNAME[q]} laden` })), ...langs.slice(0, 1).map((l) => ({ lang: l })), { all: true }] };
 	if (inLang.length) return { kind: "warn", msg: `${inLang.length} auf ${lname} gefunden, aber alle vom Profil abgelehnt – wähle selbst einen aus.`, acts: [{ all: true }, ...langs.map((l) => ({ lang: l }))] };
 	return { kind: "warn", msg: `${list.length} gefunden, aber keiner auf ${lname}.`, acts: [...langs.map((l) => ({ lang: l })), { all: true }] };
 }
@@ -594,7 +594,7 @@ async function loadReleases(x) {
 		}
 	}));
 	const all = $("[data-all]", box);
-	if (all) all.onclick = () => releasesSheet(x, d.releases, cur && LANG_EN[cur.lang]);
+	if (all) all.onclick = () => releasesSheet(x, d.releases, cur && LANG_EN[cur.lang], cur && cur.quality);
 }
 
 // Radarr's and Sonarr's reasons, in German where they're common
@@ -614,29 +614,77 @@ function reasonDe(r) {
 }
 
 // every release the search found, the rejected ones with the reason – any can be loaded
-function releasesSheet(x, list, want) {
-	if (want) list = [...list].sort((a, b) => b.languages.includes(want) - a.languages.includes(want) || a.rejected - b.rejected || (b.seeders || 0) - (a.seeders || 0));
-	const age = (d) => (d === null || d === undefined ? "" : d < 1 ? "heute" : d < 60 ? `${Math.round(d)} Tage` : `${Math.round(d / 30)} Mon.`);
-	const m = modal(`<h3>${esc(x.title)} – Releases</h3><div class="sm muted" style="margin:6px 0 12px">Was ${appOf(x)} gerade findet. Abgelehnte kannst du trotzdem laden.</div>
-		<div class="rels">${list.map((r, i) => `<div class="rel ${r.rejected ? "rej" : ""}"><div class="grow"><div class="t">${esc(r.title)}</div>
-			<div class="s">${[r.quality, bytes(r.size), r.languages.map((l) => LANGS[l] || l).join(" + "), r.seeders !== null ? `${r.seeders} Seeds` : "", r.indexer, age(r.age)].filter(Boolean).map(esc).join(" · ")}</div>
-			${r.rejected ? `<div class="s why">${esc(r.reasons.slice(0, 2).map(reasonDe).join(" · "))}</div>` : ""}</div>
-			<button class="btn small ${r.rejected ? "" : "primary"}" data-i="${i}">${r.rejected ? "Trotzdem laden" : "Laden"}</button></div>`).join("")}</div>`, "wide");
-	m.el.style.width = "min(760px, 100%)";
-	m.el.querySelectorAll("[data-i]").forEach((b) => (b.onclick = async () => {
-		const r = list[Number(b.dataset.i)];
+// Every release the search found – the same one from several indexers once – with search, filters
+// and an order that puts the likely choice on top. Rejected ones can be loaded anyway.
+function releasesSheet(x, list, want, quality) {
+	const age = (d) => (d === null || d === undefined ? "" : d < 1 ? "heute" : d < 60 ? `${Math.round(d)} Tage` : d < 730 ? `${Math.round(d / 30)} Mon.` : `${Math.round(d / 365)} J.`);
+	// one row per release name: the indexer with the most seeds, the others listed
+	const byName = new Map();
+	for (const r of list) {
+		const k = r.title.toLowerCase();
+		const have = byName.get(k);
+		if (!have) byName.set(k, { ...r, indexers: [r.indexer] });
+		else {
+			have.indexers.push(r.indexer);
+			if ((r.seeders || 0) > (have.seeders || 0)) Object.assign(have, { ...r, indexers: have.indexers });
+		}
+	}
+	const rows = [...byName.values()].map((r) => ({ ...r, q: qualityKey(r.quality), lang: want && r.languages.includes(want), remux: /remux/i.test(r.quality || r.title) }));
+	// relevance: the wanted language, the wanted quality, not rejected, many seeds, no huge remux
+	const score = (r) => (r.lang ? 40 : 0) + (r.q === quality ? 20 : r.q ? 5 : 0) + (r.rejected ? 0 : 25) + Math.min(20, Math.log10((r.seeders || 0) + 1) * 7) - (r.remux ? 10 : 0) - (r.size > 40e9 ? 6 : 0);
+	const SORT = { rel: ["Relevanz", (a, b) => score(b) - score(a)], seeds: ["Seeds", (a, b) => (b.seeders || 0) - (a.seeders || 0)], small: ["Kleinste", (a, b) => a.size - b.size], big: ["Grösste", (a, b) => b.size - a.size], new: ["Neueste", (a, b) => (a.age ?? 1e9) - (b.age ?? 1e9)] };
+	const st = { q: "", quality: "all", lang: false, ok: false, sort: "rel" };
+	const wantName = want ? LANGS[want] || want : null;
+	const m = modal(`<div class="rels-head"><h3>${esc(x.title)} – Releases</h3><span class="sm faint" id="rcount"></span></div>
+		<div class="rels-bar">
+			<input class="input" id="rq" placeholder="Im Namen suchen … z. B. imax, x265, dual" autocomplete="off" spellcheck="false">
+			<div class="seg" id="rqual">${[["all", "Alle"], ["720p", "720p"], ["1080p", "1080p"], ["4k", "4K"]].map(([k, l]) => `<button data-v="${k}" class="${k === "all" ? "on" : ""}">${l}</button>`).join("")}</div>
+			${wantName ? `<button class="chip-btn" id="rlang">Nur ${esc(wantName)}</button>` : ""}
+			<button class="chip-btn" id="rok">Nur passende</button>
+			<select class="input rsort" id="rsort">${Object.entries(SORT).map(([k, [l]]) => `<option value="${k}">${l}</option>`).join("")}</select>
+		</div>
+		<div class="rels" id="rlist"></div>`, "wide");
+	m.el.style.width = "min(860px, 100%)";
+	const draw = () => {
+		const w = st.q.toLowerCase().split(/\s+/).filter(Boolean);
+		const shown = rows
+			.filter((r) => w.every((p) => r.title.toLowerCase().includes(p)) && (st.quality === "all" || r.q === st.quality) && (!st.lang || r.lang) && (!st.ok || !r.rejected))
+			.sort(SORT[st.sort][1]);
+		$("#rcount", m.el).textContent = `${shown.length} von ${rows.length}${rows.length < list.length ? ` · ${list.length - rows.length} doppelte zusammengefasst` : ""}`;
+		$("#rlist", m.el).innerHTML = shown.map((r) => `<div class="rel ${r.rejected ? "rej" : ""}">
+			<div class="rq ${r.q || ""}">${r.q ? QNAME[r.q] : "?"}</div>
+			<div class="grow"><div class="t">${esc(r.title)}</div>
+				<div class="rchips"><span class="num">${bytes(r.size)}</span>${r.seeders !== null ? `<span class="num ${r.seeders < 5 ? "low" : ""}">${r.seeders} Seeds</span>` : ""}${r.languages.map((l) => `<span class="${l === want ? "want" : ""}">${esc(LANGS[l] || l)}</span>`).join("")}${r.remux ? `<span>Remux</span>` : ""}<span class="faint">${esc([...new Set(r.indexers.map((i) => i.replace(/ \(Prowlarr\)$/, "")))].join(", "))}</span><span class="faint">${age(r.age)}</span></div>
+				${r.rejected ? `<div class="why">${esc(r.reasons.slice(0, 2).map(reasonDe).join(" · "))}</div>` : ""}</div>
+			<button class="btn small ${r.rejected ? "" : "primary"}" data-g="${esc(r.guid)}">${r.rejected ? "Trotzdem laden" : "Laden"}</button></div>`).join("") || `<div class="sm faint" style="padding:16px">Nichts – Filter lockern</div>`;
+		$("#rlist", m.el).querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => grab(rows.find((r) => r.guid === b.dataset.g), b)));
+	};
+	const grab = async (r, b) => {
 		b.classList.add("busy");
 		try {
 			await api("POST", `/api/items/${x.id}/grab`, { guid: r.guid, indexerId: r.indexerId });
 			m.close();
-			toast("Wird geladen – erscheint gleich bei qBittorrent");
+			toast("Wird geladen – erscheint gleich unter Aktivität");
 			await sleep(2500);
 			await Promise.all([loadTor(), loadLib(true)]);
 		} catch (err) {
 			toast(esc(err.message), true);
 			b.classList.remove("busy");
 		}
-	}));
+	};
+	$("#rq", m.el).oninput = (e) => ((st.q = e.target.value), draw());
+	$("#rsort", m.el).onchange = (e) => ((st.sort = e.target.value), draw());
+	$("#rqual", m.el).onclick = (e) => {
+		const b = e.target.closest("button");
+		if (!b) return;
+		st.quality = b.dataset.v;
+		$("#rqual", m.el).querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+		draw();
+	};
+	if ($("#rlang", m.el)) $("#rlang", m.el).onclick = (e) => ((st.lang = !st.lang), e.currentTarget.classList.toggle("on", st.lang), draw());
+	$("#rok", m.el).onclick = (e) => ((st.ok = !st.ok), e.currentTarget.classList.toggle("on", st.ok), draw());
+	draw();
+	setTimeout(() => $("#rq", m.el).focus(), 50);
 }
 function closeDetail() {
 	S.open = null;
@@ -1205,7 +1253,7 @@ function drawResults() {
 			b.classList.remove("busy");
 		}
 	}));
-	box.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = (e) => (e.stopPropagation(), releasesSheet(itemById(b.dataset.pick) || list[Number(b.dataset.i)], list[Number(b.dataset.i)].releases || [], LANG_EN[list[Number(b.dataset.i)].lang]))));
+	box.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = (e) => (e.stopPropagation(), releasesSheet(itemById(b.dataset.pick) || list[Number(b.dataset.i)], list[Number(b.dataset.i)].releases || [], LANG_EN[list[Number(b.dataset.i)].lang], list[Number(b.dataset.i)].quality))));
 	box.querySelectorAll("[data-add]").forEach((b) => (b.onclick = async () => {
 		const x = list[Number(b.dataset.add)];
 		const form = b.closest(".form");
