@@ -174,10 +174,10 @@ kbd { font: 600 11px/1 inherit; padding: 4px 6px; border-radius: 6px; background
 .pc .ss { font-size: 12px; color: var(--faint); display: flex; justify-content: space-between; gap: 6px; }
 .pc .dl-badge { position: absolute; top: 7px; right: 7px; }
 /* detail drawer */
-.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--tile); border-left: 1px solid var(--line); z-index: 80; padding: 22px; overflow: auto; transform: translateX(100%); transition: transform .22s ease; box-shadow: -30px 0 60px rgba(0, 0, 0, .35); }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(540px, 100%); background: var(--tile); border-left: 1px solid var(--line); z-index: 80; padding: 22px; overflow: auto; transform: translateX(100%); transition: transform .22s ease; box-shadow: -30px 0 60px rgba(0, 0, 0, .35); }
 .drawer.open { transform: none; }
 .drawer .top { display: flex; gap: 16px; }
-.drawer .top .poster { width: 110px; }
+.drawer .top .poster { width: 130px; }
 .drawer h3 { font-size: 20px; font-weight: 700; line-height: 1.2; }
 .kv { display: grid; background: var(--tile-2); border-radius: 14px; margin-top: 18px; }
 .kv > div { display: flex; justify-content: space-between; gap: 10px; padding: 10px 14px; font-size: 13px; }
@@ -459,3 +459,10 @@ html, body { background: var(--bg); }
 .td-btn.danger svg { color: #ff8f8f; }
 .td-btn.danger:hover { background: rgba(255, 107, 107, .2); }
 .td-btn.busy { opacity: .6; pointer-events: none; }
+
+.langrow { display: flex; align-items: center; gap: 8px; margin-top: 12px; background: var(--tile-2); border-radius: 14px; padding: 10px 14px; font-size: 13px; }
+.langrow .grow { flex: 1; min-width: 0; }
+
+/* on the add page the page is the search */
+body.on-add .hsearch { visibility: hidden; }
+.toolbar:empty { min-height: 20px; }

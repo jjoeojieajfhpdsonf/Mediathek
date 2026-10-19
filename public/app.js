@@ -193,6 +193,7 @@ function go(page) {
 
 function render() {
 	drawSide();
+	document.body.classList.toggle("on-add", S.page === "add");
 	const c = $("#content");
 	if (c.dataset.page && c.dataset.page !== S.page) (c.dataset.page = ""), (c.dataset.html = "");
 	$("#toolbar").dataset.html = "";
@@ -492,8 +493,9 @@ function openDetail(id, keep) {
 			${x.copy ? `<div><span>Kopie in Downloads</span><span class="num" style="color:var(--warn)">${bytes(x.copy)}</span></div>` : ""}
 			${x.next ? `<div><span>Nächste Folge</span><span>${new Date(x.next).toLocaleDateString("de-CH", { weekday: "short", day: "numeric", month: "short" })}</span></div>` : ""}
 		</div>
+		${relangHtml(x)}
 		<div id="dtorWrap"></div>
-		${missingSeason(x) !== null ? `<div id="relWrap"></div>` : ""}
+		${missingSeason(x) !== null || S.relFor === x.id ? `<div id="relWrap"></div>` : ""}
 		<label class="switch-row keep-row"><div class="grow"><div>Behalten</div><div class="sm faint">Der Autopilot löscht diesen Titel nie</div></div><span class="switch"><input type="checkbox" id="keep" ${(S.state.keep || []).includes(x.id) ? "checked" : ""}><span></span></span></label>
 		<div style="display:flex;gap:8px;margin-top:14px"><button class="btn danger" id="del" style="flex:1;justify-content:center">Überall löschen${freedBy(x) ? ` · ${bytes(freedBy(x))}` : ""}</button></div>
 		<div class="sm faint" style="margin-top:10px">Löscht in ${appOf(x)}${S.state.services.qbittorrent ? ", qBittorrent" : ""}${S.state.services.jellyfin ? " und Jellyfin" : ""} auf einmal – mit den Dateien.</div>`;
@@ -510,7 +512,29 @@ function openDetail(id, keep) {
 	drawDrawerTorrents();
 	failedPosters(drawer);
 	drawer.classList.add("open");
-	if (missingSeason(x) !== null && !keep) loadReleases(x);
+	if ((missingSeason(x) !== null || S.relFor === x.id) && !keep) loadReleases(x);
+	drawer.querySelectorAll("[data-relang]").forEach((b) => (b.onclick = async () => {
+		b.classList.add("busy");
+		try {
+			const r = await api("POST", `/api/items/${x.id}/reprofile`, { lang: b.dataset.relang, quality: qualityKey(x.quality) || "1080p" });
+			toast(`Profil «${esc(r.profile)}» – ${appOf(x)} sucht die ${LANG_NAME[b.dataset.relang]}e Fassung`);
+			S.relFor = x.id;
+			await sleep(3000);
+			openDetail(x.id);
+		} catch (err) {
+			toast(esc(err.message), true);
+			b.classList.remove("busy");
+		}
+	}));
+}
+
+// a movie that's there: in which language, and the others to get instead
+function relangHtml(x) {
+	if (x.type !== "movie" || !x.hasFile) return "";
+	const have = (x.languages || []).filter((l) => l !== "Unknown");
+	const want = ["de", "en"].filter((k) => !have.includes(LANG_EN[k]));
+	return `<div class="langrow"><div class="grow"><div class="sm muted">Sprache der Datei</div><div>${have.length ? have.map((l) => esc(LANGS[l] || l)).join(", ") : "unbekannt"}</div></div>
+		${want.map((k) => `<button class="btn small" data-relang="${k}">Auf ${LANG_NAME[k]} holen</button>`).join("")}</div>`;
 }
 
 // what isn't loaded yet: a movie without file, or the first season of a series with episodes missing
@@ -554,7 +578,7 @@ async function loadReleases(x) {
 	const box = $("#relWrap");
 	if (!box) return;
 	const season = missingSeason(x);
-	const head = `<div class="sm muted" style="margin:18px 2px 6px;font-weight:600">${x.type === "movie" ? "Noch nicht geladen" : `Staffel ${season} unvollständig`}</div>`;
+	const head = `<div class="sm muted" style="margin:18px 2px 6px;font-weight:600">${x.hasFile && x.type === "movie" ? "Andere Fassung" : x.type === "movie" ? "Noch nicht geladen" : `Staffel ${season} unvollständig`}</div>`;
 	box.innerHTML = `${head}<div class="relbox"><div class="sm faint">Fragt ${appOf(x)}, was die Suche findet …</div></div>`;
 	let d;
 	try {
@@ -689,6 +713,14 @@ function releasesSheet(x, list, want, quality) {
 	draw();
 	setTimeout(() => $("#rq", m.el).focus(), 50);
 }
+// a click next to the details closes them (clicks on a title open that one instead)
+document.addEventListener("mousedown", (e) => {
+	const d = $("#drawer");
+	if (!d || !d.classList.contains("open") || d.contains(e.target)) return;
+	if (e.target.closest(".scrim, .menu, .toast, [data-id], .hit")) return;
+	closeDetail();
+});
+
 function closeDetail() {
 	S.open = null;
 	$("#drawer").classList.remove("open");
@@ -971,6 +1003,7 @@ function bindSpot() {
 	document.addEventListener("keydown", (e) => {
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
 			e.preventDefault();
+			if (S.page === "add" && $("#aq")) return $("#aq").focus(), $("#aq").select();
 			$("#spot").hidden ? openSpot() : closeSpot();
 		} else if (e.key === "Escape" && !document.querySelector(".scrim")) {
 			if (!$("#spot").hidden) closeSpot();
@@ -1181,8 +1214,8 @@ function addCheckHtml(x) {
 const ADD = { q: "", results: null, busy: false, timer: null, seq: 0, open: null };
 
 function drawAdd() {
-	put($("#toolbar"), tbtn("search", "Suchen", "focus"));
-	$("#toolbar").querySelector("[data-a]").onclick = () => $("#aq") && $("#aq").focus();
+	// the page is the search: no second one in the toolbar or the header
+	put($("#toolbar"), "");
 	if ($("#content").dataset.page !== "add") {
 		$("#content").dataset.page = "add";
 		$("#content").dataset.html = "";
