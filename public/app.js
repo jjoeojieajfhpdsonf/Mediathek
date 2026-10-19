@@ -21,7 +21,7 @@ const ago = (t) => {
 	const d = Math.floor((Date.now() - t) / 864e5);
 	return d < 1 ? "heute" : d === 1 ? "gestern" : d < 30 ? `vor ${d} Tagen` : d < 60 ? "vor einem Monat" : d < 365 ? `vor ${Math.round(d / 30)} Monaten` : `vor ${nf(d / 365, 1)} Jahren`;
 };
-const eta = (s) => (!s ? "" : s < 60 ? "unter 1 min" : s < 3600 ? `noch ${Math.round(s / 60)} min` : s < 86400 ? `noch ${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `noch ${Math.round(s / 86400)} Tage`);
+const eta = (s) => (!s ? "" : s < 60 ? "unter 1 min" : s < 3600 ? `noch ${Math.round(s / 60)} min` : s < 86400 ? `noch ${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : (Math.round(s / 86400) === 1 ? "noch 1 Tag" : `noch ${Math.round(s / 86400)} Tage`));
 const runtime = (m) => (m ? `${Math.floor(m / 60)} h ${m % 60} min` : "");
 const typeTag = (x) => `<span class="tag ${x.type}">${x.type === "movie" ? "Film" : "Serie"}</span>`;
 const appOf = (x) => (x.type === "movie" ? "Radarr" : "Sonarr");
@@ -143,7 +143,9 @@ const ICON = {
 	slow: "<path d='M3 15c2-6 7-8 11-6s5 6 7 6M5 15v3M17 15v3'/>",
 	trash: "<path d='M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'/>",
 	gear: "<circle cx='12' cy='12' r='3'/><path d='M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1'/>",
-	info: "<circle cx='12' cy='12' r='9'/><path d='M12 11v6M12 7h.01'/>"
+	info: "<circle cx='12' cy='12' r='9'/><path d='M12 11v6M12 7h.01'/>",
+	first: "<path d='M12 19V7M6 12l6-6 6 6M5 3h14'/>",
+	check: "<path d='M5 12.5l4.5 4.5L19 7.5'/>"
 };
 const icon = (k, n = 18) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 const tbtn = (k, label, act, on) => `<button class="tb ${on ? "on" : ""}" data-a="${act}">${icon(k, 16)}<span>${label}</span></button>`;
@@ -818,7 +820,8 @@ function bindTorrents(el) {
 async function torrentDetail(hash) {
 	const t = torrents().find((x) => x.hash === hash);
 	if (!t) return;
-	const m = modal(`<h3>${esc(t.title || t.name)}</h3><div class="sm faint" style="margin-top:4px;word-break:break-all">${esc(t.name)}</div><div class="sm faint" style="margin-top:16px">Lädt Details …</div>`);
+	const m = modal(`<div class="td-head"><div class="grow"><h3>${esc(t.title || t.name)}</h3></div><button class="td-x" data-x aria-label="Schliessen">✕</button></div><div class="sm faint" style="margin-top:16px">Lädt Details …</div>`, "td");
+	$("[data-x]", m.el).onclick = m.close;
 	let d;
 	try {
 		d = await api("GET", `/api/torrents/${hash}`);
@@ -830,33 +833,46 @@ async function torrentDetail(hash) {
 	const it = d.item && itemById(d.item);
 	const paused = t.state === "paused" || t.state === "done";
 	const files = [...d.files].sort((a, b) => b.size - a.size);
+	const loading = t.done < 1;
+	const act = (a, ic, text, cls = "") => `<button class="td-btn ${cls}" data-a="${a}">${icon(ic, 15)}<span>${text}</span></button>`;
 	m.el.innerHTML = `
-		<h3>${esc(t.title || t.name)}</h3><div class="sm faint" style="margin-top:4px;word-break:break-all">${esc(t.name)}</div>
-		<div style="margin-top:14px"><div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:${color};font-weight:600">${label}</span><span class="num muted">${nf(t.done * 100, 1)} % von ${bytes(t.size)}</span></div>
-			<div class="bar" style="margin-top:7px"><i style="width:${t.done * 100}%;background:${color}"></i></div></div>
+		<div class="td-head">
+			${it ? posterHtml(it) : ""}
+			<div class="grow">
+				<h3>${esc(t.title || t.name)}</h3>
+				<div class="td-sub"><span class="label" style="color:${color};background:color-mix(in srgb, ${color} 15%, transparent)">${label}</span>${it ? `<span class="faint">${appOf(it)}</span>` : t.category ? `<span class="faint">${esc(t.category)}</span>` : ""}</div>
+			</div>
+			<button class="td-x" data-x aria-label="Schliessen">✕</button>
+		</div>
+		<div class="td-name" title="${esc(t.name)}">${esc(t.name)}</div>
+		<div class="td-prog">
+			<div class="td-pct"><b class="num">${nf(t.done * 100, 1)} %</b><span class="muted">von ${bytes(t.size)}</span>${loading && t.state === "down" && t.eta ? `<span class="td-eta">${eta(t.eta)}</span>` : ""}</div>
+			<div class="bar" style="height:8px"><i style="width:${Math.max(t.done * 100, loading ? 0.6 : 0)}%;background:${color}"></i></div>
+		</div>
 		<div class="kv-grid">
 			<div><span>Download</span><b class="num">${speed(t.down)}</b></div>
 			<div><span>Upload</span><b class="num">${speed(t.up)}</b></div>
-			<div><span>Restzeit</span><b>${t.state === "down" ? eta(t.eta) || "–" : "–"}</b></div>
-			<div><span>Quellen / Peers</span><b class="num">${d.seeds} (${d.seedsTotal}) / ${d.peers} (${d.peersTotal})</b></div>
-			<div><span>Ratio</span><b class="num">${nf(d.ratio, 2)}</b></div>
-			<div><span>Hochgeladen</span><b class="num">${bytes(d.uploaded)}</b></div>
+			<div><span>Quellen</span><b class="num">${d.seeds} verbunden · ${d.seedsTotal} bekannt</b></div>
+			<div><span>Peers</span><b class="num">${d.peers} verbunden · ${d.peersTotal} bekannt</b></div>
+			<div><span>Ratio</span><b class="num">${nf(d.ratio, 2)} · ${bytes(d.uploaded)} hochgeladen</b></div>
 			<div><span>Hinzugefügt</span><b>${ago(d.addedOn)}</b></div>
-			<div><span>Gehört zu</span><b>${it ? `${esc(it.title)} · ${appOf(it)}` : esc(t.category || "–")}</b></div>
-			${d.tracker ? `<div style="grid-column:1/-1"><span>Tracker</span><b style="word-break:break-all">${esc(d.tracker.replace(/\/announce.*$/, ""))}</b></div>` : ""}
 		</div>
-		<div class="sm muted" style="margin:14px 2px 6px;font-weight:600">${files.length === 1 ? "Datei" : `${files.length} Dateien`}</div>
-		<div class="steps" style="max-height:180px;overflow:auto">${files.slice(0, 40).map((f) => `<div class="step" style="padding:7px 10px"><div class="grow" style="font-size:12.5px;word-break:break-all">${esc(f.name.split("/").pop())}</div><span class="st num">${bytes(f.size)}</span></div>`).join("")}</div>
-		${t.state === "stalled" && d.canReplace ? `<div class="note-warn">Keine vollständige Quelle. <b>Anderen Release suchen</b> sperrt diesen in ${it ? appOf(it) : "Radarr/Sonarr"} und holt einen neuen.</div>` : ""}
-		<div class="acts" style="justify-content:space-between;flex-wrap:wrap">
-			<div style="display:flex;gap:6px;flex-wrap:wrap">
-				<button class="btn small" data-a="${paused ? "resume" : "pause"}">${paused ? "▶ Fortsetzen" : "❚❚ Pausieren"}</button>
-				${t.done < 1 ? `<button class="btn small" data-a="first">Zuerst laden</button>` : ""}
-				${t.done < 1 && d.canReplace ? `<button class="btn small" data-a="replace">Anderen Release suchen</button>` : ""}
-				<button class="btn small" data-a="recheck">Neu prüfen</button>
+		<details class="td-more"><summary>${files.length === 1 ? "Datei" : `${files.length} Dateien`}${d.tracker ? " und Tracker" : ""}</summary>
+			<div class="td-files">${files.slice(0, 40).map((f) => `<div><span title="${esc(f.name)}">${esc(f.name.split("/").pop())}</span><span class="num faint">${bytes(f.size)}</span></div>`).join("")}</div>
+			${d.tracker ? `<div class="sm faint" style="margin-top:8px;word-break:break-all">Tracker: ${esc(d.tracker.replace(/\/announce.*$/, ""))}</div>` : ""}
+		</details>
+		${t.state === "stalled" && d.canReplace ? `<div class="note-warn">Keine vollständige Quelle. <b>Anderen Release</b> sperrt diesen in ${it ? appOf(it) : "Radarr/Sonarr"} und holt einen neuen.</div>` : ""}
+		<div class="td-actions">
+			<div class="td-group">
+				${act(paused ? "resume" : "pause", paused ? "play" : "pause", paused ? "Fortsetzen" : "Pausieren")}
+				${loading ? act("first", "first", "Zuerst laden") : ""}
+				${loading && d.canReplace ? act("replace", "refresh", "Anderer Release") : ""}
+				${act("recheck", "check", "Prüfen")}
 			</div>
-			<button class="btn small danger" data-a="remove">Entfernen …</button>
+			${act("remove", "trash", "Entfernen …", "danger")}
 		</div>`;
+	failedPosters(m.el);
+	$("[data-x]", m.el).onclick = m.close;
 	m.el.querySelectorAll("[data-a]").forEach((b) => (b.onclick = async () => {
 		const a = b.dataset.a;
 		if (a === "remove") return m.close(), removeTorrent(t, it);
