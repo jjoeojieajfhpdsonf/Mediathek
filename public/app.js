@@ -57,7 +57,13 @@ const STATE = {
 const LOADING = ["down", "meta", "stalled", "queued", "checking", "paused"];
 
 async function api(method, url, body) {
-	const r = await fetch(url, { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+	let r;
+	try {
+		r = await fetch(url, { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+	} catch {
+		// the connection broke off – usually the app restarting after an update
+		throw Object.assign(new Error("Verbindung zur Mediathek unterbrochen – sie startet vielleicht gerade neu."), { offline: true });
+	}
 	const d = await r.json().catch(() => ({}));
 	if (r.status === 401 && d.login) {
 		showLogin();
@@ -551,7 +557,9 @@ async function loadReleases(x) {
 	try {
 		d = await api("GET", `/api/items/${x.id}/releases${x.type === "series" ? `?season=${season}` : ""}`);
 	} catch (err) {
-		if ($("#relWrap") === box) box.innerHTML = `${head}<div class="relbox"><div class="sm bad-text">${esc(err.message)}</div></div>`;
+		if ($("#relWrap") !== box) return;
+		box.innerHTML = `${head}<div class="relbox"><div class="sm bad-text">${esc(err.message)}</div><div class="relacts"><button class="btn small" data-retry>Nochmals versuchen</button></div></div>`;
+		$("[data-retry]", box).onclick = () => loadReleases(x);
 		return;
 	}
 	if (S.open !== x.id || $("#relWrap") !== box) return;
