@@ -154,7 +154,7 @@ function addFlow(x, onDone) {
 function protoNav(on) {
 	const n = document.createElement("nav");
 	n.className = "proto-nav";
-	n.innerHTML = [["d.html", "D · Kombiniert"], ["a.html", "A · Suche"], ["b.html", "B · Poster-Wand"], ["c.html", "C · Aufräumen"], ["e.html", "E · Radarr-Stil"]].map(([h, l]) => `<a href="${h}" class="${h === on ? "on" : ""}">${l}</a>`).join("");
+	n.innerHTML = [["d.html", "D · Kombiniert"], ["a.html", "A · Suche"], ["b.html", "B · Poster-Wand"], ["c.html", "C · Aufräumen"], ["e.html", "E · Radarr-Stil"], ["f.html", "F · E modern"]].map(([h, l]) => `<a href="${h}" class="${h === on ? "on" : ""}">${l}</a>`).join("");
 	document.body.append(n);
 }
 
