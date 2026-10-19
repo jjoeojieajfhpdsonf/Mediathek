@@ -1,8 +1,8 @@
 "use strict";
-// Mediathek – the web app. One page: space and clean-up on top, the library as posters, qBittorrent
-// on the right; ⌘K / Ctrl+K searches everything and adds new titles.
+// Mediathek – the web app. A sidebar with the pages – library, adding, activity (qBittorrent),
+// clean-up, autopilot – and ⌘K / Ctrl+K to search everything from anywhere.
 
-const S = { state: null, lib: null, tor: null, filter: "all", q: "", open: null };
+const S = { state: null, lib: null, tor: null, open: null, page: "lib", type: "all", filter: "all", view: "poster", sort: "added", q: "" };
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -120,21 +120,41 @@ async function start() {
 	setInterval(() => document.visibilityState === "visible" && loadLib(), 30000);
 }
 
+const ICON = {
+	lib: "<rect x='3' y='4' width='7' height='16' rx='1.5'/><rect x='14' y='4' width='7' height='16' rx='1.5'/>",
+	add: "<circle cx='12' cy='12' r='9'/><path d='M12 8v8M8 12h8'/>",
+	act: "<path d='M12 3v12M7 10l5 5 5-5M5 21h14'/>",
+	clean: "<path d='M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'/>",
+	auto: "<path d='M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4'/><circle cx='12' cy='12' r='4'/>",
+	refresh: "<path d='M20 11a8 8 0 10-2.3 5.7M20 5v6h-6'/>",
+	search: "<circle cx='11' cy='11' r='7'/><path d='M20 20l-3.5-3.5'/>",
+	grid: "<rect x='3' y='3' width='7' height='7' rx='1'/><rect x='14' y='3' width='7' height='7' rx='1'/><rect x='3' y='14' width='7' height='7' rx='1'/><rect x='14' y='14' width='7' height='7' rx='1'/>",
+	table: "<path d='M3 5h18M3 12h18M3 19h18'/>",
+	sort: "<path d='M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4'/>",
+	filter: "<path d='M3 5h18l-7 8v6l-4 2v-8z'/>",
+	pause: "<path d='M8 5v14M16 5v14'/>",
+	play: "<path d='M7 4l13 8-13 8z'/>",
+	slow: "<path d='M3 15c2-6 7-8 11-6s5 6 7 6M5 15v3M17 15v3'/>",
+	trash: "<path d='M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'/>",
+	gear: "<circle cx='12' cy='12' r='3'/><path d='M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1'/>",
+	info: "<circle cx='12' cy='12' r='9'/><path d='M12 11v6M12 7h.01'/>"
+};
+const icon = (k, n = 18) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+const tbtn = (k, label, act, on) => `<button class="tb ${on ? "on" : ""}" data-a="${act}">${icon(k, 16)}<span>${label}</span></button>`;
+
 function shell() {
 	$("#app").innerHTML = `
-		<div class="topbar"><div class="brand">Mediathek${S.state.demo ? ` <span class="tag" style="margin-left:6px">Demo</span>` : ""}</div>
-			<button class="find-btn" id="openSpot"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Film oder Serie suchen …</span><kbd>${IS_MAC ? "⌘K" : "Ctrl K"}</kbd></button>
-			<button class="auto-btn ${S.state.auto ? "on" : ""}" id="openAuto" title="Autopilot"><i></i>Autopilot</button>
-			<button class="icon-btn" id="openSettings" title="Einstellungen" aria-label="Einstellungen"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg></button>
-		</div>
-		<div class="errs" id="errs"></div>
-		<div class="wrap" style="padding-top:18px">
-			<main>
-				<div class="overview"><div class="card free" id="free"></div><div class="card"><div style="font-weight:650;margin-bottom:10px">Vorschläge zum Aufräumen</div><div class="sugg" id="sugg"></div></div></div>
-				<div class="head2"><h2>Bibliothek</h2><div class="chips" id="chips"></div><input class="input" id="q" placeholder="Filtern …" style="width:200px;padding:7px 11px;background:var(--tile)"></div>
-				<div id="lib"><div class="sm faint" style="padding:20px 2px">Lädt die Bibliothek …</div></div>
-			</main>
-			<aside class="side"><div class="card" id="qb"></div></aside>
+		<div class="app">
+			<header class="hd">
+				<div class="logo"><svg width="30" height="30" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#222228"/><rect x="13" y="14" width="16" height="36" rx="4" fill="#ffc230"/><rect x="33" y="14" width="18" height="16" rx="4" fill="#35c5f4"/><rect x="33" y="34" width="18" height="16" rx="4" fill="#b18cff"/></svg>Mediathek${S.state.demo ? ` <span class="tag" style="margin-left:2px">Demo</span>` : ""}</div>
+				<button class="hsearch" id="openSpot">${icon("search", 15)}<span>Film oder Serie suchen …</span><kbd>${IS_MAC ? "⌘K" : "Ctrl K"}</kbd></button>
+				<div class="hicons">
+					<button title="Aktivität" id="hAct">${icon("act")}<span class="badge" id="hBadge" hidden></span></button>
+					<button title="Einstellungen" id="openSettings">${icon("gear")}</button>
+				</div>
+			</header>
+			<nav class="sidenav" id="sidenav"></nav>
+			<main class="pg"><div class="toolbar" id="toolbar"></div><div class="errs" id="errs"></div><div class="content" id="content"><div class="empty-h">Lädt …</div></div></main>
 		</div>
 		<aside class="drawer" id="drawer"></aside>
 		<div class="spot" id="spot" hidden><div class="spot-in">
@@ -144,9 +164,52 @@ function shell() {
 		</div></div>`;
 	$("#openSpot").onclick = openSpot;
 	$("#openSettings").onclick = () => settingsSheet(false);
-	$("#openAuto").onclick = autoSheet;
-	$("#q").oninput = (e) => ((S.q = e.target.value), drawLib());
+	$("#hAct").onclick = () => go("activity");
+	S.page = (location.hash.slice(1) in PAGES && location.hash.slice(1)) || LS.get("page", "lib");
+	if (!(S.page in PAGES)) S.page = "lib";
+	S.view = LS.get("view", "poster");
+	window.addEventListener("hashchange", () => location.hash.slice(1) in PAGES && location.hash.slice(1) !== S.page && go(location.hash.slice(1)));
 	bindSpot();
+	render();
+}
+
+const PAGES = { lib: drawLibrary, add: drawAdd, activity: drawActivity, clean: drawClean, auto: drawAuto };
+
+function go(page) {
+	if (S.page !== page) window.scrollTo(0, 0);
+	S.page = page;
+	LS.set("page", page);
+	if (location.hash.slice(1) !== page) history.replaceState(null, "", `#${page}`);
+	render();
+}
+
+function render() {
+	drawSide();
+	const c = $("#content");
+	if (c.dataset.page && c.dataset.page !== S.page) (c.dataset.page = ""), (c.dataset.html = "");
+	$("#toolbar").dataset.html = "";
+	PAGES[S.page]();
+}
+
+function drawSide() {
+	const loading = torrents().filter((t) => LOADING.includes(t.state) && t.state !== "paused").length;
+	const tidy = suggestions().length;
+	const a = (k, ic, label, cnt, cls = "") => `<a class="${S.page === k ? "on" : ""} ${cls}" data-p="${k}">${icon(ic)}<span>${label}</span>${cnt ? `<span class="cnt">${cnt}</span>` : ""}</a>`;
+	const html =
+		a("lib", "lib", "Bibliothek") +
+		(S.page === "lib" ? [["all", "Alle"], ["movie", "Filme"], ["series", "Serien"]].map(([k, l]) => `<a class="sub ${S.type === k ? "on" : ""}" data-t="${k}">${l}</a>`).join("") : "") +
+		a("add", "add", "Hinzufügen") +
+		a("activity", "act", "Aktivität", loading) +
+		a("clean", "clean", "Aufräumen", tidy, "tidy") +
+		a("auto", "auto", "Autopilot", S.state.auto ? "an" : "", S.state.auto ? "auto-on" : "");
+	const nav = $("#sidenav");
+	if (nav.dataset.html === html) return;
+	nav.dataset.html = html;
+	nav.innerHTML = html;
+	nav.querySelectorAll("[data-p]").forEach((el) => (el.onclick = () => go(el.dataset.p)));
+	nav.querySelectorAll("[data-t]").forEach((el) => (el.onclick = () => ((S.type = el.dataset.t), render())));
+	$("#hBadge").hidden = !loading;
+	$("#hBadge").textContent = loading || "";
 }
 
 async function loadLib(fresh) {
@@ -157,24 +220,33 @@ async function loadLib(fresh) {
 		return;
 	}
 	drawErrors(S.lib.errors);
-	drawOverview();
-	drawLib();
+	if (["lib", "clean"].includes(S.page)) render();
+	else drawSide();
 	if (S.open) openDetail(S.open, true);
 }
 
 async function loadTor() {
-	if (!S.state.services.qbittorrent) return drawQb();
+	if (!S.state.services.qbittorrent) return;
 	try {
 		S.tor = await api("GET", "/api/torrents");
 		S.torError = null;
 	} catch (err) {
 		S.torError = err.message;
 	}
-	drawQb();
-	if (S.lib) drawOverview();
+	drawSide();
+	if (S.page === "activity") drawActivity();
+	else if (S.page === "clean") drawClean();
 	// posters show the progress of what's loading
-	if (torrents().some((t) => t.item && LOADING.includes(t.state))) drawLib();
+	else if (S.page === "lib" && torrents().some((t) => t.item && LOADING.includes(t.state))) drawLibrary(true);
 	if (S.open && $("#drawer").classList.contains("open")) drawDrawerTorrents();
+}
+
+// sets the page's html only when it changed (pages are redrawn every few seconds)
+function put(el, html) {
+	if (el.dataset.html === html) return false;
+	el.dataset.html = html;
+	el.innerHTML = html;
+	return true;
 }
 
 function drawErrors(errors) {
@@ -183,51 +255,50 @@ function drawErrors(errors) {
 	$("#errs").querySelectorAll("[data-set]").forEach((b) => (b.onclick = () => settingsSheet(false)));
 }
 
-// ---------- space and clean-up ----------
+// ---------- clean-up ----------
 
-function drawOverview() {
+// what could go, each with what it frees and what to do
+function suggestions() {
+	const out = [];
+	const dupDone = torrents().filter((t) => t.copy && t.item && t.done >= 1 && t.ratio >= 1);
+	if (dupDone.length) out.push({ key: "dup", t: "Doppelte Kopien", s: `${dupDone.length === 1 ? "Ein Film liegt" : `${dupDone.length} Titel liegen`} zweimal auf dem Server: in der Bibliothek und im Download-Ordner fürs Seeding. Genug verteilt ist schon (Ratio über 1) – die Download-Kopie kann weg, ${dupDone.length === 1 ? "der Titel bleibt" : "die Titel bleiben"}.`, list: dupDone.map((t) => ({ title: t.title, sub: `Ratio ${t.ratio}`, size: t.size })), n: dupDone.reduce((a, t) => a + t.size, 0), b: "Kopien löschen", go: () => dupFlow(dupDone) });
+	// finished torrents whose title is gone from Radarr and Sonarr, or whose files are gone
+	const arrsOn = S.state.services.radarr || S.state.services.sonarr;
+	const orphans = arrsOn && S.lib ? torrents().filter((t) => !t.item && t.done >= 1 && (!t.category || /radarr|sonarr|tv|movie|film|serie/i.test(t.category))) : [];
+	const empty = torrents().filter((t) => t.state === "missing");
+	const stale = [...orphans, ...empty.filter((t) => !orphans.includes(t))];
+	if (stale.length) out.push({ key: "stale", t: "Überflüssige Torrents", s: "Nicht mehr in Radarr oder Sonarr, oder ihre Dateien sind schon weg – qBittorrent kennt sie aber noch.", list: stale.map((t) => ({ title: t.title, sub: t.state === "missing" ? "Dateien schon weg" : "nicht mehr in Radarr oder Sonarr", size: t.state === "missing" ? 0 : t.size })), n: orphans.reduce((a, t) => a + t.size, 0), b: "Entfernen …", go: () => orphanFlow(stale) });
+	const seenAll = items().filter((x) => x.watched >= 1);
+	if (seenAll.length) out.push({ key: "seen", t: "Gesehen", s: "Fertig geschaut – löschen, was du nicht nochmals schauen willst.", items: seenAll });
+	const old = items().filter((x) => x.watched === 0 && x.hasFile && x.added && Date.now() - x.added > 90 * 864e5);
+	if (old.length) out.push({ key: "old", t: "Lange nicht geschaut", s: "Seit über drei Monaten da und nie angefangen.", items: old });
+	return out;
+}
+
+function drawClean() {
+	put($("#toolbar"), tbtn("refresh", "Neu berechnen", "refresh"));
+	$("#toolbar").querySelectorAll("[data-a]").forEach((b) => (b.onclick = async () => (b.classList.add("busy"), await Promise.all([loadLib(true), loadTor()]), b.classList.remove("busy"))));
+	if (!S.lib) return;
 	const sp = S.lib.space;
 	const movies = items().filter((x) => x.type === "movie").reduce((a, x) => a + (x.size || 0), 0);
 	const series = items().filter((x) => x.type === "series").reduce((a, x) => a + (x.size || 0), 0);
 	const dup = items().reduce((a, x) => a + (x.copy || 0), 0);
-	const freeEl = $("#free");
-	let freeHtml;
-	if (sp && sp.total) {
-		const other = Math.max(0, sp.total - sp.free - movies - series - dup);
-		const w = (n) => `${(n / sp.total) * 100}%`;
-		freeHtml = `<div class="muted sm">Frei auf dem Server</div><b class="num">${bytes(sp.free)}</b><span class="faint sm"> von ${bytes(sp.total)}</span>
-			<div class="bar" style="margin-top:14px"><i style="width:${w(movies)};background:var(--movie)"></i><i style="width:${w(series)};background:var(--series)"></i><i style="width:${w(dup)};background:var(--bad)"></i><i style="width:${w(other)};background:#555"></i></div>
-			<div class="legend"><span style="--c:var(--movie)">Filme ${bytes(movies)}</span><span style="--c:var(--series)">Serien ${bytes(series)}</span>${dup ? `<span style="--c:var(--bad)">Doppelt ${bytes(dup)}</span>` : ""}<span style="--c:#555">Anderes ${bytes(other)}</span></div>`;
-	} else freeHtml = `<div class="muted sm">Frei auf dem Server</div><b class="num">${sp ? bytes(sp.free) : "–"}</b><div class="legend"><span style="--c:var(--movie)">Filme ${bytes(movies)}</span><span style="--c:var(--series)">Serien ${bytes(series)}</span></div>`;
-	if (freeEl.dataset.html !== freeHtml) (freeEl.dataset.html = freeHtml), (freeEl.innerHTML = freeHtml);
-
-	const sugg = [];
-	// second copies of finished torrents that have seeded enough
-	const dupDone = torrents().filter((t) => t.copy && t.item && t.done >= 1 && t.ratio >= 1);
-	if (dupDone.length) sugg.push({ t: "Doppelte Kopien", s: `${dupDone.length === 1 ? "Ein Film liegt" : `${dupDone.length} Filme liegen`} zweimal auf dem Server: in der Bibliothek und im Download-Ordner fürs Seeding. Die Download-Kopie kann weg, ${dupDone.length === 1 ? "der Film bleibt" : "die Filme bleiben"}.`, n: dupDone.reduce((a, t) => a + t.size, 0), b: "Aufräumen", go: () => dupFlow(dupDone) });
-	// finished torrents whose title is gone from Radarr and Sonarr: only taking space
-	const arrsOn = S.state.services.radarr || S.state.services.sonarr;
-	const orphans = arrsOn ? torrents().filter((t) => !t.item && t.done >= 1 && (!t.category || /radarr|sonarr|tv|movie|film|serie/i.test(t.category))) : [];
-	const empty = torrents().filter((t) => t.state === "missing");
-	const stale = [...orphans, ...empty.filter((t) => !orphans.includes(t))];
-	if (stale.length)
-		sugg.push({
-			t: stale.length === 1 ? "1 überflüssiger Torrent" : `${stale.length} überflüssige Torrents`,
-			s: `${stale.slice(0, 3).map((t) => t.title).join(", ")}${stale.length > 3 ? " …" : ""} – ${orphans.length && empty.length ? "nicht mehr in Radarr oder Sonarr oder ohne Dateien" : orphans.length ? "nicht mehr in Radarr oder Sonarr, belegen nur noch Platz" : "ihre Dateien sind schon weg, qBittorrent kennt sie noch"}.`,
-			n: orphans.reduce((a, t) => a + t.size, 0),
-			b: "Entfernen",
-			go: () => orphanFlow(stale)
-		});
-	const seenAll = items().filter((x) => x.watched >= 1);
-	if (seenAll.length) sugg.push({ t: seenAll.length === 1 ? "1 gesehener Titel" : `${seenAll.length} gesehene Titel`, s: seenAll.slice(0, 4).map((x) => x.title).join(", ") + (seenAll.length > 4 ? " …" : ""), n: seenAll.reduce((a, x) => a + freedBy(x), 0), b: "Ansehen", go: () => ((S.filter = "seen"), drawLib(), $("#lib").scrollIntoView({ behavior: "smooth" })) });
-	const old = items().filter((x) => x.watched === 0 && x.hasFile && x.added && Date.now() - x.added > 90 * 864e5);
-	if (old.length) sugg.push({ t: "Lange nicht geschaut", s: `${old.slice(0, 3).map((x) => x.title).join(", ")}${old.length > 3 ? " …" : ""} – seit über 3 Monaten da, nie angefangen.`, n: old.reduce((a, x) => a + freedBy(x), 0), b: "Ansehen", go: () => ((S.filter = "old"), drawLib(), $("#lib").scrollIntoView({ behavior: "smooth" })) });
-	const html = sugg.map((x, i) => `<div class="sug"><div class="t">${esc(x.t)}</div><div class="s">${esc(x.s)}</div><div class="foot"><b class="num">${bytes(x.n)}</b><button class="btn small" data-s="${i}">${x.b}</button></div></div>`).join("") || `<div class="faint sm">Nichts aufzuräumen.</div>`;
-	// redrawn every few seconds: only touch it when something changed
-	if ($("#sugg").dataset.html === html) return;
-	$("#sugg").dataset.html = html;
-	$("#sugg").innerHTML = html;
-	$("#sugg").querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => sugg[b.dataset.s].go()));
+	const other = sp && sp.total ? Math.max(0, sp.total - sp.free - movies - series - dup) : 0;
+	const w = (n) => (sp && sp.total ? `${(n / sp.total) * 100}%` : "0");
+	const sugg = suggestions();
+	const titleRow = (x) => `<tr data-id="${x.id}" style="cursor:pointer"><td style="width:42px">${posterHtml(x)}</td><td><div>${esc(x.title)}</div><div class="sm faint">${[x.year, x.type === "movie" ? "Film" : "Serie", x.lastPlayed ? `gesehen ${ago(x.lastPlayed)}` : `da ${ago(x.added)}`].filter(Boolean).join(" · ")}</div></td><td class="num" style="text-align:right">${bytes(freedBy(x))}</td><td style="width:1%"><button class="ic-btn" data-del="${x.id}" title="Überall löschen">${icon("trash", 15)}</button></td></tr>`;
+	const html = `<div class="page-h"><h1>Aufräumen</h1></div>
+		<div class="box2"><h3>Speicher</h3>
+			<div class="space"><div><b class="num">${sp ? bytes(sp.free) : "–"}</b><span class="faint"> frei${sp && sp.total ? ` von ${bytes(sp.total)}` : ""}</span></div></div>
+			${sp && sp.total ? `<div class="bar" style="margin-top:12px;height:10px"><i style="width:${w(movies)};background:var(--movie)"></i><i style="width:${w(series)};background:var(--series)"></i><i style="width:${w(dup)};background:var(--bad)"></i><i style="width:${w(other)};background:#4a4a52"></i></div>` : ""}
+			<div class="legend2" style="margin-top:12px"><span><i style="background:var(--movie)"></i>Filme ${bytes(movies)}</span><span><i style="background:var(--series)"></i>Serien ${bytes(series)}</span>${dup ? `<span><i style="background:var(--bad)"></i>Doppelt ${bytes(dup)}</span>` : ""}${sp && sp.total ? `<span><i style="background:#4a4a52"></i>Anderes ${bytes(other)}</span>` : ""}</div></div>
+		${sugg.map((g, i) => `<div class="box2"><div class="box-h"><div><h3>${esc(g.t)}</h3><div class="sm muted">${esc(g.s)}</div></div>${g.go ? `<button class="abtn ${g.key === "dup" ? "primary" : ""}" data-g="${i}">${g.n ? `${bytes(g.n)} · ` : ""}${g.b}</button>` : ""}</div>
+			<table>${g.items ? g.items.map(titleRow).join("") : g.list.map((r) => `<tr><td>${esc(r.title)}<div class="sm faint">${esc(r.sub)}</div></td><td class="num" style="text-align:right">${r.size ? bytes(r.size) : ""}</td></tr>`).join("")}</table></div>`).join("") || `<div class="box2"><div class="sm faint">Nichts aufzuräumen.</div></div>`}`;
+	if (!put($("#content"), html)) return;
+	$("#content").querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => sugg[b.dataset.g].go()));
+	$("#content").querySelectorAll("[data-del]").forEach((b) => (b.onclick = (e) => (e.stopPropagation(), deleteFlow(itemById(b.dataset.del)))));
+	$("#content").querySelectorAll("tr[data-id]").forEach((r) => (r.onclick = () => openDetail(r.dataset.id)));
+	failedPosters($("#content"));
 }
 
 function orphanFlow(list) {
@@ -285,44 +356,94 @@ function dupFlow(list) {
 
 // ---------- library ----------
 
-const FILTERS = [["all", "Alle"], ["movie", "Filme"], ["series", "Serien"], ["seen", "Gesehen"], ["old", "Nie geschaut"], ["big", "Gross zuerst"]];
+const FILTERS = [["all", "Alle"], ["seen", "Gesehen"], ["unseen", "Nicht gesehen"], ["missing", "Fehlt"], ["loading", "Lädt"], ["old", "Nie geschaut, alt"]];
+const SORTS = { added: "Neueste", title: "Titel", size: "Grösse", year: "Jahr" };
 
-function drawLib() {
-	if (!S.lib) return;
-	$("#chips").innerHTML = FILTERS.map(([k, l]) => `<button data-f="${k}" class="${S.filter === k ? "on" : ""}">${l}</button>`).join("");
-	$("#chips").querySelectorAll("button").forEach((b) => (b.onclick = () => ((S.filter = b.dataset.f), drawLib())));
-	const w = S.q.toLowerCase().split(/\s+/).filter(Boolean);
-	let list = items().filter((x) => w.every((p) => `${x.title} ${x.year || ""}`.toLowerCase().includes(p)));
-	if (S.filter === "movie" || S.filter === "series") list = list.filter((x) => x.type === S.filter);
-	if (S.filter === "seen") list = list.filter((x) => x.watched >= 1);
-	if (S.filter === "old") list = list.filter((x) => x.watched === 0 && x.hasFile && x.added && Date.now() - x.added > 90 * 864e5);
-	list.sort(S.filter === "big" ? (a, b) => freedBy(b) - freedBy(a) : (a, b) => (b.added || 0) - (a.added || 0));
-	const started = S.filter === "all" && !w.length ? list.filter((x) => (x.watched > 0 && x.watched < 1) || x.watching) : [];
-	const rest = list.filter((x) => !started.includes(x));
-	if (!items().length) {
-		$("#lib").innerHTML = `<div class="empty"><h2>Noch nichts in der Bibliothek</h2>Mit <kbd>${IS_MAC ? "⌘K" : "Ctrl K"}</kbd> suchst du Filme und Serien und fügst sie hinzu.</div>`;
-		return;
-	}
-	$("#lib").innerHTML = `${started.length ? `<div class="sub-h">Angefangen</div><div class="row">${started.map(card).join("")}</div><div class="sub-h">Weitere</div>` : ""}
-		<div class="row">${rest.map(card).join("") || `<div class="sm faint">Nichts gefunden</div>`}</div>`;
-	$("#lib").querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => openDetail(b.dataset.id)));
-	failedPosters($("#lib"));
+// the state of a title: colour and word for the pill on the poster
+function statusOf(x) {
+	const t = torrentsOf(x).find((t) => LOADING.includes(t.state));
+	if (t) return t.state === "stalled" ? ["var(--warn)", "Hängt", t] : t.state === "paused" ? ["var(--faint)", "Pausiert", t] : ["var(--purple)", t.state === "down" ? `${Math.round(t.done * 100)} %` : STATE[t.state][0].replace(" …", ""), t];
+	if (!x.hasFile) return [x.type === "movie" && x.status === "waiting" ? "var(--muted)" : "var(--bad)", x.type === "movie" && x.status === "waiting" ? "Erscheint noch" : "Fehlt", null];
+	if (x.watching) return ["var(--accent)", "Läuft", null];
+	if (x.watched >= 1) return ["var(--series)", "Gesehen", null];
+	if (x.watched > 0) return ["var(--series)", `${Math.round(x.watched * 100)} % gesehen`, null];
+	return ["var(--ok)", "Geladen", null];
 }
 
-function card(x) {
-	const t = torrentsOf(x).find((t) => LOADING.includes(t.state));
-	const prog = t ? `<div class="prog"><i style="width:${t.done * 100}%;${t.state === "stalled" ? "background:var(--warn)" : ""}"></i></div>` : x.watched > 0 && x.watched < 1 ? `<div class="prog"><i style="width:${x.watched * 100}%"></i></div>` : "";
-	const badge = t
-		? `<span class="tag dl-badge" style="color:${STATE[t.state][1]}">${t.state === "down" ? `${Math.round(t.done * 100)} %` : STATE[t.state][0].split(" ")[0]}</span>`
-		: !x.hasFile
-			? `<span class="tag dl-badge warn">${x.type === "movie" && x.status === "waiting" ? "Noch nicht erschienen" : "Fehlt"}</span>`
-			: x.watching
-				? `<span class="tag dl-badge" style="color:var(--accent)">▶ läuft</span>`
-				: x.watched >= 1
-					? `<span class="tag ok dl-badge">✓</span>`
-					: "";
-	const kept = (S.state.keep || []).includes(x.id) ? `<span class="keep-pin" title="Behalten">📌</span>` : "";
-	return `<button class="pc" data-id="${x.id}">${posterHtml(x, prog)}${badge}${kept}<div class="tt">${esc(x.title)}</div><div class="ss"><span>${x.year || ""} · ${x.type === "movie" ? "Film" : "Serie"}</span><span class="num">${x.size ? bytes(x.size) : ""}</span></div></button>`;
+function libList() {
+	const w = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+	let list = items().filter((x) => (S.type === "all" || x.type === S.type) && w.every((p) => `${x.title} ${x.year || ""}`.toLowerCase().includes(p)));
+	const f = S.filter;
+	if (f === "seen") list = list.filter((x) => x.watched >= 1);
+	if (f === "unseen") list = list.filter((x) => x.hasFile && !(x.watched >= 1));
+	if (f === "missing") list = list.filter((x) => !x.hasFile);
+	if (f === "loading") list = list.filter((x) => torrentsOf(x).some((t) => LOADING.includes(t.state)));
+	if (f === "old") list = list.filter((x) => x.watched === 0 && x.hasFile && x.added && Date.now() - x.added > 90 * 864e5);
+	const by = { added: (a, b) => (b.added || 0) - (a.added || 0), title: (a, b) => a.title.localeCompare(b.title), size: (a, b) => freedBy(b) - freedBy(a), year: (a, b) => (b.year || 0) - (a.year || 0) };
+	return list.sort(by[S.sort]);
+}
+
+function drawLibrary(quiet) {
+	if (!quiet) {
+		put($("#toolbar"), `${tbtn("refresh", "Aktualisieren", "refresh")}${tbtn("add", "Hinzufügen", "add")}
+			<input class="tb-find" id="q" placeholder="Filtern …" value="${esc(S.q)}">
+			<div class="tb-right">${tbtn("grid", "Poster", "poster", S.view === "poster")}${tbtn("table", "Tabelle", "table", S.view === "table")}${tbtn("sort", SORTS[S.sort], "sort")}${tbtn("filter", S.filter === "all" ? "Filter" : FILTERS.find((x) => x[0] === S.filter)[1], "filter", S.filter !== "all")}</div>`);
+		const tb = $("#toolbar");
+		tb.querySelectorAll("[data-a]").forEach((b) => (b.onclick = (e) => {
+			const a = b.dataset.a;
+			if (a === "refresh") return b.classList.add("busy"), loadLib(true).then(() => b.classList.remove("busy"));
+			if (a === "add") return go("add");
+			if (a === "poster" || a === "table") return (S.view = a), LS.set("view", a), drawLibrary();
+			if (a === "sort") return menu(b, Object.entries(SORTS), S.sort, (v) => ((S.sort = v), drawLibrary()));
+			if (a === "filter") return menu(b, FILTERS, S.filter, (v) => ((S.filter = v), drawLibrary()));
+		}));
+		$("#q", tb).oninput = (e) => ((S.q = e.target.value), drawLibrary(true));
+	}
+	if (!S.lib) return;
+	if (!items().length) return put($("#content"), `<div class="empty"><h2>Noch nichts in der Bibliothek</h2>Unter <b>Hinzufügen</b> oder mit <kbd>${IS_MAC ? "⌘K" : "Ctrl K"}</kbd> suchst du Filme und Serien.</div>`);
+	const list = libList();
+	const loaded = items().filter((x) => x.hasFile).length;
+	const card = (x) => {
+		const [c, label, t] = statusOf(x);
+		const kept = (S.state.keep || []).includes(x.id) ? `<span class="keep-pin" title="Behalten">📌</span>` : "";
+		return `<div class="pcard" data-id="${x.id}">${posterHtml(x, `<span class="pill" style="color:${c}"><i style="background:${c}"></i>${esc(label)}</span>${kept}${t ? `<div class="pstat"><i style="width:${t.done * 100}%;background:${c}"></i></div>` : x.watched > 0 && x.watched < 1 ? `<div class="pstat"><i style="width:${x.watched * 100}%;background:var(--series)"></i></div>` : ""}`)}
+			<div class="acts"><button data-del="${x.id}" title="Überall löschen">${icon("trash", 14)}</button></div>
+			<div class="info"><div class="tt">${esc(x.title)}</div><div class="ss"><span>${[x.year, x.type === "movie" ? "Film" : `${(x.seasons || []).length} Staffeln`].filter(Boolean).join(" · ")}</span><span class="num">${x.size ? bytes(x.size) : ""}</span></div></div></div>`;
+	};
+	const row = (x) => {
+		const [c, label] = statusOf(x);
+		return `<tr data-id="${x.id}" style="cursor:pointer"><td style="width:42px">${posterHtml(x)}</td><td><div>${esc(x.title)}</div><div class="sm faint">${x.year || ""}</div></td><td><span class="label" style="color:${c};background:color-mix(in srgb, ${c} 15%, transparent)">${esc(label)}</span></td><td>${typeTag(x)}</td><td class="sm muted">${esc(x.quality || "")}</td><td>${seen(x)}</td><td class="num">${x.size ? bytes(x.size) : ""}</td><td class="sm muted">${ago(x.added)}</td><td style="width:1%"><button class="ic-btn" data-del="${x.id}" title="Überall löschen">${icon("trash", 15)}</button></td></tr>`;
+	};
+	const sp = S.lib.space;
+	const dup = items().reduce((a, x) => a + (x.copy || 0), 0);
+	const html = (list.length ? (S.view === "poster" ? `<div class="pgrid">${list.map(card).join("")}</div>` : `<div class="box2" style="padding:6px 10px"><table class="ltable">${list.map(row).join("")}</table></div>`) : `<div class="empty-h">Nichts gefunden</div>`) +
+		`<div class="legend2"><span><i style="background:var(--bad)"></i>Fehlt</span><span><i style="background:var(--purple)"></i>Lädt</span><span><i style="background:var(--warn)"></i>Hängt</span><span><i style="background:var(--ok)"></i>Geladen</span><span><i style="background:var(--series)"></i>Gesehen</span><span><i style="background:var(--accent)"></i>Läuft</span></div>
+		<div class="stats"><div><b>${items().filter((x) => x.type === "movie").length}</b>Filme</div><div><b>${items().filter((x) => x.type === "series").length}</b>Serien</div><div><b>${loaded}</b>Geladen</div><div><b>${items().filter((x) => x.watched >= 1).length}</b>Gesehen</div><div><b>${sp ? bytes(sp.free) : "–"}</b>Frei</div>${dup ? `<div class="warn-stat" data-p="clean"><b>${bytes(dup)}</b>Doppelt</div>` : ""}</div>`;
+	if (!put($("#content"), html)) return;
+	const c = $("#content");
+	c.querySelectorAll("[data-del]").forEach((b) => (b.onclick = (e) => (e.stopPropagation(), deleteFlow(itemById(b.dataset.del)))));
+	c.querySelectorAll("[data-id]").forEach((el) => (el.onclick = () => openDetail(el.dataset.id)));
+	c.querySelectorAll(".stats [data-p]").forEach((el) => (el.onclick = () => go(el.dataset.p)));
+	failedPosters(c);
+}
+
+// a small menu under a toolbar button
+function menu(anchor, options, current, pick) {
+	document.querySelectorAll(".menu").forEach((m) => m.remove());
+	const m = document.createElement("div");
+	m.className = "menu";
+	m.innerHTML = options.map(([k, l]) => `<button data-v="${k}" class="${k === current ? "on" : ""}">${esc(l)}</button>`).join("");
+	const r = anchor.getBoundingClientRect();
+	m.style.top = `${r.bottom + 6}px`;
+	m.style.right = `${Math.max(8, innerWidth - r.right)}px`;
+	document.body.append(m);
+	const close = (e) => {
+		if (e && m.contains(e.target)) return;
+		m.remove();
+		document.removeEventListener("mousedown", close);
+	};
+	setTimeout(() => document.addEventListener("mousedown", close));
+	m.querySelectorAll("button").forEach((b) => (b.onclick = () => (pick(b.dataset.v), close())));
 }
 
 // posters from TMDB that don't load: the quiet placeholder
@@ -372,7 +493,7 @@ function openDetail(id, keep) {
 	$("#keep", drawer).onchange = async (e) => {
 		try {
 			S.state.keep = (await api("POST", `/api/items/${x.id}/keep`, { keep: e.target.checked })).keep;
-			drawLib();
+			if (S.page === "lib") drawLibrary(true);
 		} catch (err) {
 			toast(esc(err.message), true);
 		}
@@ -567,33 +688,33 @@ function torrentRow(t, compact) {
 	</div>`;
 }
 
-function drawQb() {
-	const box = $("#qb");
-	if (!box) return;
-	if (!S.state.services.qbittorrent) return (box.innerHTML = `<h3>qBittorrent</h3><div class="sm faint">Nicht eingerichtet – in den <a href="#" id="qbset" style="text-decoration:underline">Einstellungen</a> verbinden.</div>`), ($("#qbset").onclick = (e) => (e.preventDefault(), settingsSheet(false)));
-	if (S.torError) return (box.innerHTML = `<h3>qBittorrent</h3><div class="sm bad-text">${esc(S.torError)}</div>`);
-	if (!S.tor) return (box.innerHTML = `<h3>qBittorrent</h3><div class="sm faint">Lädt …</div>`);
-	const order = { down: 0, meta: 1, checking: 1, queued: 2, stalled: 2, paused: 3, error: 0, seed: 4, done: 5, missing: 6 };
-	const list = [...torrents()].sort((a, b) => order[a.state] - order[b.state] || (b.added || 0) - (a.added || 0));
-	const active = list.filter((t) => LOADING.includes(t.state) || t.state === "error");
-	const rest = list.filter((t) => !active.includes(t));
-	const anyRunning = list.some((t) => !["paused", "done"].includes(t.state));
-	box.innerHTML = `<h3>qBittorrent</h3>
-		<div class="qb-head"><div class="qb-speed"><span><b class="num">↓ ${speed(S.tor.down)}</b></span><span class="muted num">↑ ${speed(S.tor.up)}</span><span class="faint">${active.length} lädt · ${list.filter((t) => t.state === "seed").length} seeding</span></div>
-			<div class="qb-acts"><button class="chip-btn ${S.tor.slow ? "on" : ""}" data-qb="slow" title="Die Grenzen aus qBittorrents «alternativen Geschwindigkeiten»">🐢 Langsam</button><button class="chip-btn" data-qb="${anyRunning ? "pauseAll" : "resumeAll"}">${anyRunning ? "❚❚ Alle pausieren" : "▶ Alle fortsetzen"}</button></div></div>
-		<div class="grp">Lädt</div>${active.map((t) => torrentRow(t)).join("") || `<div class="sm faint" style="padding:8px 4px">Nichts wird geladen</div>`}
-		${rest.length ? `<div class="grp">Fertig · seeding oder pausiert</div>${rest.map((t) => torrentRow(t)).join("")}` : ""}`;
-	bindTorrents(box);
-	box.querySelectorAll("[data-qb]").forEach((b) => (b.onclick = async () => {
+function drawActivity() {
+	const tor = S.tor;
+	const anyRunning = torrents().some((t) => !["paused", "done", "missing", "error"].includes(t.state));
+	put($("#toolbar"), `${tbtn("refresh", "Aktualisieren", "refresh")}${S.state.services.qbittorrent ? `<span class="tb-sep"></span>${tbtn(anyRunning ? "pause" : "play", anyRunning ? "Alle pausieren" : "Alle fortsetzen", anyRunning ? "pauseAll" : "resumeAll")}${tbtn("slow", "Langsam", "slow", tor && tor.slow)}` : ""}`);
+	$("#toolbar").querySelectorAll("[data-a]").forEach((b) => (b.onclick = async () => {
 		b.classList.add("busy");
 		try {
-			if (b.dataset.qb === "slow") await api("POST", "/api/slow");
-			else await api("POST", `/api/torrents/all/${b.dataset.qb === "pauseAll" ? "pause" : "resume"}`);
+			const a = b.dataset.a;
+			if (a === "slow") await api("POST", "/api/slow");
+			else if (a === "pauseAll" || a === "resumeAll") await api("POST", `/api/torrents/all/${a === "pauseAll" ? "pause" : "resume"}`);
 		} catch (err) {
 			toast(esc(err.message), true);
 		}
 		await loadTor();
+		b.classList.remove("busy");
 	}));
+	if (!S.state.services.qbittorrent) return put($("#content"), `<div class="page-h"><h1>Aktivität</h1></div><div class="box2"><div class="sm muted">qBittorrent ist nicht verbunden – in den <a href="#" id="qbset" style="text-decoration:underline">Einstellungen</a> einrichten.</div></div>`) && ($("#qbset").onclick = (e) => (e.preventDefault(), settingsSheet(false)));
+	if (S.torError) return put($("#content"), `<div class="page-h"><h1>Aktivität</h1></div><div class="box2"><div class="sm bad-text">${esc(S.torError)}</div></div>`);
+	if (!tor) return put($("#content"), `<div class="empty-h">Lädt …</div>`);
+	const order = { error: 0, down: 0, meta: 1, checking: 1, queued: 2, stalled: 2, paused: 3, seed: 4, done: 5, missing: 6 };
+	const list = [...torrents()].sort((a, b) => order[a.state] - order[b.state] || (b.added || 0) - (a.added || 0));
+	const active = list.filter((t) => LOADING.includes(t.state) || t.state === "error");
+	const rest = list.filter((t) => !active.includes(t));
+	const html = `<div class="page-h"><h1>Aktivität</h1><span class="muted num">↓ ${speed(tor.down)} · ↑ ${speed(tor.up)}${tor.slow ? " · langsam" : ""}</span></div>
+		<div class="box2"><h3>Warteschlange <span class="faint">${active.length}</span></h3><div class="tors">${active.map((t) => torrentRow(t)).join("") || `<div class="sm faint" style="padding:10px 4px">Nichts wird geladen</div>`}</div></div>
+		${rest.length ? `<div class="box2"><h3>Seeding und fertig <span class="faint">${rest.length}</span></h3><div class="tors">${rest.map((t) => torrentRow(t)).join("")}</div></div>` : ""}`;
+	if (put($("#content"), html)) bindTorrents($("#content"));
 }
 
 function bindTorrents(el) {
@@ -846,88 +967,174 @@ function addFlow(x) {
 
 const KIND = { watched: ["Gesehen", "var(--movie)"], space: ["Wenig Platz", "var(--bad)"], seeded: ["Fertig geteilt", "var(--ok)"], stalled: ["Hängt", "var(--warn)"] };
 
-async function autoSheet() {
-	let d;
-	try {
-		d = await api("GET", "/api/auto");
-	} catch (err) {
-		return toast(esc(err.message), true);
-	}
+function drawAuto() {
+	put($("#toolbar"), tbtn("play", "Jetzt ausführen", "run"));
+	$("#toolbar").querySelector("[data-a]").onclick = async (e) => {
+		const b = e.currentTarget;
+		b.classList.add("busy");
+		try {
+			const res = await api("POST", "/api/auto/run");
+			const bad = res.done.filter((x) => !x.ok).length;
+			toast(res.done.length ? `${res.done.length - bad} erledigt${bad ? `, ${bad} fehlgeschlagen` : ""}` : "Nichts zu tun", bad > 0);
+			await Promise.all([loadLib(true), loadTor()]);
+			$("#content").dataset.html = "";
+			drawAuto();
+		} catch (err) {
+			toast(esc(err.message), true);
+		}
+		b.classList.remove("busy");
+	};
+	if ($("#content").dataset.page === "auto") return;
+	$("#content").dataset.page = "auto";
+	$("#content").dataset.html = "";
+	$("#content").innerHTML = `<div class="empty-h">Lädt …</div>`;
+	api("GET", "/api/auto").then(autoPage, (err) => toast(esc(err.message), true));
+}
+
+function autoPage(d) {
+	if (S.page !== "auto") return;
 	const r = d.rules;
 	const sw = (id, on) => `<span class="switch"><input type="checkbox" id="${id}" ${on ? "checked" : ""}><span></span></span>`;
 	const n = (id, v, w = 64, step = 1) => `<input class="input num-in" id="${id}" type="number" min="0" step="${step}" value="${v}" style="width:${w}px">`;
-	const m = modal(`
-		<div style="display:flex;align-items:center;gap:12px"><h3 style="flex:1">Autopilot</h3>${sw("a-on", r.enabled)}</div>
-		<div class="sm muted" style="margin-top:6px">Hält den Server sauber – alle 15 Minuten. Titel mit «Behalten», angefangene und gerade laufende werden nie angefasst.</div>
+	const c = $("#content");
+	c.innerHTML = `<div class="page-h"><h1>Autopilot</h1><span class="muted">alle 15 Minuten · «Behalten», angefangene und laufende Titel werden nie angefasst</span></div>
+		<div class="box2 auto-master"><div><h3 style="margin:0">Autopilot ${r.enabled ? "ist an" : "ist aus"}</h3><div class="sm muted">${r.enabled ? "Die eingeschalteten Regeln laufen von selbst." : "Nichts passiert von selbst. «Jetzt ausführen» geht trotzdem."}</div></div>${sw("a-on", r.enabled)}</div>
 		<div class="rules">
 			<div class="rule" data-rule="s"><div class="rule-top"><div class="t">Fertig geteilte Torrents entfernen</div>${sw("s-on", r.seeded.on)}</div><div class="d">Die Kopie im Download-Ordner wird gelöscht, der Titel bleibt in der Bibliothek.</div><div class="s"><span>ab Ratio</span>${n("s-ratio", r.seeded.ratio, 64, 0.1)}<span>oder nach</span>${n("s-days", r.seeded.days, 64)}<span>Tagen</span></div></div>
 			<div class="rule" data-rule="w"><div class="rule-top"><div class="t">Gesehenes löschen</div>${sw("w-on", r.watched.on)}</div><div class="d">Überall gelöscht, wie mit «Überall löschen».</div><div class="s">${n("w-days", r.watched.days, 64)}<span>Tage nach dem Fertigschauen</span><span class="sep"></span><label class="inl"><input type="checkbox" id="w-movies" ${r.watched.movies ? "checked" : ""}>Filme</label><label class="inl"><input type="checkbox" id="w-series" ${r.watched.series ? "checked" : ""}>Serien</label></div></div>
 			<div class="rule" data-rule="p"><div class="rule-top"><div class="t">Platz schaffen</div>${sw("p-on", r.space.on)}</div><div class="d">Gesehenes löschen, das am längsten her ist – bis wieder genug frei ist.</div><div class="s"><span>wenn weniger als</span>${n("p-gb", r.space.minGB, 72)}<span>GB frei sind</span></div></div>
-			<div class="rule" data-rule="t"><div class="rule-top"><div class="t">Hängende Downloads ersetzen</div>${sw("t-on", r.stalled.on)}</div><div class="d">${"Radarr bzw. Sonarr sperrt den Release und sucht einen anderen."}</div><div class="s"><span>nach</span>${n("t-hours", r.stalled.hours, 64)}<span>Stunden ohne vollständige Quelle</span></div></div>
+			<div class="rule" data-rule="t"><div class="rule-top"><div class="t">Hängende Downloads ersetzen</div>${sw("t-on", r.stalled.on)}</div><div class="d">Radarr bzw. Sonarr sperrt den Release und sucht einen anderen.</div><div class="s"><span>nach</span>${n("t-hours", r.stalled.hours, 64)}<span>Stunden ohne vollständige Quelle</span></div></div>
 		</div>
-		<div class="sm muted" style="margin:18px 2px 6px;font-weight:600">Beim nächsten Lauf</div>
-		<div id="a-plan"></div>
-		<div class="sm muted" style="margin:18px 2px 6px;font-weight:600">Erledigt</div>
-		<div class="steps" style="max-height:220px;overflow:auto">${d.log.length ? d.log.map((e) => `<div class="step ${e.ok ? "" : "fail"}"><span class="tag" style="color:${KIND[e.kind][1]}">${KIND[e.kind][0]}</span><div class="grow"><div class="t">${esc(e.title)}</div><div class="s">${esc(e.ok ? e.why : e.error)} · ${new Date(e.at).toLocaleString("de-CH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div></div><span class="st num">${e.bytes ? bytes(e.bytes) : ""}</span></div>`).join("") : `<div class="sm faint" style="padding:8px 10px">Noch nichts</div>`}</div>
-		<div class="acts"><button class="btn" data-run>Jetzt ausführen</button><button class="btn primary" data-save>Speichern</button></div>`, "wide");
-	m.el.style.width = "min(680px, 100%)";
+		<div class="two">
+			<div class="box2"><h3>Beim nächsten Lauf</h3><div id="a-plan"></div></div>
+			<div class="box2"><h3>Erledigt</h3><div class="steps" style="max-height:340px;overflow:auto">${d.log.length ? d.log.map((e) => `<div class="step ${e.ok ? "" : "fail"}"><span class="tag" style="color:${KIND[e.kind][1]}">${KIND[e.kind][0]}</span><div class="grow"><div class="t">${esc(e.title)}</div><div class="s">${esc(e.ok ? e.why : e.error)} · ${new Date(e.at).toLocaleString("de-CH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div></div><span class="st num">${e.bytes ? bytes(e.bytes) : ""}</span></div>`).join("") : `<div class="sm faint" style="padding:8px 10px">Noch nichts</div>`}</div></div>
+		</div>`;
 	const collect = () => ({
-		enabled: $("#a-on", m.el).checked,
-		seeded: { on: $("#s-on", m.el).checked, ratio: $("#s-ratio", m.el).value, days: $("#s-days", m.el).value },
-		watched: { on: $("#w-on", m.el).checked, days: $("#w-days", m.el).value, movies: $("#w-movies", m.el).checked, series: $("#w-series", m.el).checked },
-		space: { on: $("#p-on", m.el).checked, minGB: $("#p-gb", m.el).value },
-		stalled: { on: $("#t-on", m.el).checked, hours: $("#t-hours", m.el).value }
+		enabled: $("#a-on", c).checked,
+		seeded: { on: $("#s-on", c).checked, ratio: $("#s-ratio", c).value, days: $("#s-days", c).value },
+		watched: { on: $("#w-on", c).checked, days: $("#w-days", c).value, movies: $("#w-movies", c).checked, series: $("#w-series", c).checked },
+		space: { on: $("#p-on", c).checked, minGB: $("#p-gb", c).value },
+		stalled: { on: $("#t-on", c).checked, hours: $("#t-hours", c).value }
 	});
 	const drawPlan = (plan) => {
-		const box = $("#a-plan", m.el);
+		const box = $("#a-plan", c);
+		if (!box) return;
 		if (plan && plan.error) return (box.innerHTML = `<div class="sm bad-text">${esc(plan.error)}</div>`);
 		const total = (plan || []).reduce((a, x) => a + (x.bytes || 0), 0);
 		box.innerHTML = plan && plan.length
 			? `<div class="steps">${plan.map((a) => `<div class="step"><span class="tag" style="color:${KIND[a.kind][1]}">${KIND[a.kind][0]}</span><div class="grow"><div class="t">${esc(a.title)}</div><div class="s">${esc(a.why)}</div></div><span class="st num">${a.bytes ? bytes(a.bytes) : ""}</span></div>`).join("")}</div>${total ? `<div class="freed"><span class="muted">Würde frei</span><b class="num">${bytes(total)}</b></div>` : ""}`
-			: `<div class="sm faint" style="padding:8px 10px;background:var(--tile-2);border-radius:14px">Nichts zu tun</div>`;
+			: `<div class="sm faint" style="padding:8px 2px">Nichts zu tun</div>`;
 	};
 	drawPlan(d.plan);
-	const dim = () => m.el.querySelectorAll("[data-rule]").forEach((el) => el.classList.toggle("off", !$(`#${el.dataset.rule}-on`, m.el).checked));
+	const dim = () => c.querySelectorAll("[data-rule]").forEach((el) => el.classList.toggle("off", !$(`#${el.dataset.rule}-on`, c).checked));
 	dim();
-	m.el.querySelectorAll(".rule .switch input").forEach((i) => i.addEventListener("change", dim));
-	// changing a rule shows its effect right away (saved, then planned again)
+	// every change is saved right away, and the plan follows
 	let timer;
-	m.el.querySelectorAll(".rules input, #a-on").forEach((i) => i.addEventListener("input", () => {
+	c.querySelectorAll(".rules input, #a-on").forEach((i) => i.addEventListener("input", () => {
+		dim();
 		clearTimeout(timer);
 		timer = setTimeout(async () => {
 			try {
-				await api("POST", "/api/auto", collect());
+				const res = await api("POST", "/api/auto", collect());
+				if (S.state.auto !== res.rules.enabled) {
+					S.state.auto = res.rules.enabled;
+					toast(S.state.auto ? "Autopilot ist an" : "Autopilot ist aus");
+					const h = $(".auto-master h3", c);
+					if (h) h.textContent = `Autopilot ${S.state.auto ? "ist an" : "ist aus"}`;
+					drawSide();
+				}
 				drawPlan((await api("GET", "/api/auto")).plan);
 			} catch (err) {
 				toast(esc(err.message), true);
 			}
-		}, 400);
+		}, 350);
 	}));
-	$("[data-save]", m.el).onclick = async () => {
+}
+
+// ---------- the add page: search through Radarr and Sonarr, add right there ----------
+const ADD = { q: "", results: null, busy: false, timer: null, seq: 0, open: null };
+
+function drawAdd() {
+	put($("#toolbar"), tbtn("search", "Suchen", "focus"));
+	$("#toolbar").querySelector("[data-a]").onclick = () => $("#aq") && $("#aq").focus();
+	if ($("#content").dataset.page !== "add") {
+		$("#content").dataset.page = "add";
+		$("#content").dataset.html = "";
+		$("#content").innerHTML = `<div class="page-h"><h1>Hinzufügen</h1><span class="muted">Filme gehen an Radarr, Serien an Sonarr</span></div>
+			<div class="addq">${icon("search", 18)}<input id="aq" placeholder="z. B. Interstellar, The Bear …" autocomplete="off" spellcheck="false" value="${esc(ADD.q)}"></div><div id="ares"></div>`;
+		const aq = $("#aq");
+		aq.oninput = () => {
+			ADD.q = aq.value;
+			clearTimeout(ADD.timer);
+			const q = aq.value.trim();
+			if (q.length < 2) return (ADD.results = null), drawResults();
+			ADD.busy = true;
+			drawResults();
+			const seq = ++ADD.seq;
+			ADD.timer = setTimeout(async () => {
+				let res = [];
+				try {
+					res = await api("GET", `/api/search?q=${encodeURIComponent(q)}`);
+				} catch (err) {
+					toast(esc(err.message), true);
+				}
+				if (seq !== ADD.seq) return;
+				ADD.busy = false;
+				ADD.results = res;
+				drawResults();
+			}, 300);
+		};
+		setTimeout(() => aq.focus(), 30);
+	}
+	drawResults();
+}
+
+function drawResults() {
+	const box = $("#ares");
+	if (!box) return;
+	if (!ADD.q.trim()) return (box.innerHTML = `<div class="empty-h">Tippe einen Titel – gesucht wird über Radarr und Sonarr.</div>`);
+	const list = ADD.results || [];
+	const last = LS.get("add", { lang: "de", quality: "1080p", monitor: "all" });
+	const opt = (v, cur, l) => `<option value="${v}" ${v === cur ? "selected" : ""}>${l}</option>`;
+	box.innerHTML = list.map((x, i) => {
+		const mine = x.id && itemById(x.id);
+		return `<div class="result ${ADD.open === x.key ? "open" : ""}" data-r="${i}">${posterHtml(x)}<div class="grow"><h2>${esc(x.title)}<span>${x.year ? `(${x.year})` : ""}</span></h2>
+			<div class="meta">${typeTag(x)}${x.rating ? `<span class="label">★ ${x.rating}</span>` : ""}${x.runtime ? `<span class="label">${runtime(x.runtime)}</span>` : ""}${x.seasons ? `<span class="label">${x.seasons} ${x.seasons === 1 ? "Staffel" : "Staffeln"}</span>` : ""}${x.have ? `<span class="label ok">${mine ? "In der Bibliothek" : `Schon in ${appOf(x)}`}</span>` : ""}</div>
+			<div class="ov">${esc(x.about || "")}</div>
+			${x.have ? (mine ? `<div class="form" style="display:flex"><button class="abtn" data-open="${x.id}">Öffnen</button></div>` : "") : `<div class="form"><label>Sprache<select data-k="lang">${opt("de", last.lang, "Deutsch")}${opt("en", last.lang, "Englisch")}${opt("orig", last.lang, "Original")}</select></label><label>Qualität<select data-k="quality">${opt("720p", last.quality, "720p")}${opt("1080p", last.quality, "1080p")}${opt("4k", last.quality, "4K")}</select></label>${x.type === "series" ? `<label>Laden<select data-k="monitor">${opt("all", last.monitor, "Alle Staffeln")}${opt("first", last.monitor, "Nur Staffel 1")}${opt("future", last.monitor, "Nur Neue")}</select></label>` : ""}<button class="abtn primary" data-add="${i}">${x.type === "movie" ? "Film" : "Serie"} hinzufügen</button></div>`}
+			</div></div>`;
+	}).join("") || `<div class="empty-h">${ADD.busy ? "Sucht in Radarr und Sonarr …" : "Nichts gefunden"}</div>`;
+	if (ADD.busy && list.length) box.insertAdjacentHTML("afterbegin", `<div class="sm faint" style="margin-top:12px">Sucht …</div>`);
+	box.querySelectorAll(".result").forEach((r) => (r.onclick = (e) => {
+		if (e.target.closest(".form")) return;
+		const x = list[Number(r.dataset.r)];
+		ADD.open = ADD.open === x.key ? null : x.key;
+		box.querySelectorAll(".result").forEach((o) => o.classList.toggle("open", o === r && ADD.open === x.key));
+	}));
+	box.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openDetail(b.dataset.open)));
+	box.querySelectorAll("[data-add]").forEach((b) => (b.onclick = async () => {
+		const x = list[Number(b.dataset.add)];
+		const form = b.closest(".form");
+		const val = { ...last };
+		form.querySelectorAll("[data-k]").forEach((s) => (val[s.dataset.k] = s.value));
+		LS.set("add", val);
+		b.classList.add("busy");
+		b.textContent = "Wird hinzugefügt …";
 		try {
-			const res = await api("POST", "/api/auto", collect());
-			S.state.auto = res.rules.enabled;
-			$("#openAuto").classList.toggle("on", S.state.auto);
-			m.close();
-			toast(S.state.auto ? "Autopilot ist an" : "Autopilot ist aus");
+			const r = await api("POST", "/api/add", { type: x.type, key: x.key, lang: val.lang, quality: val.quality, monitor: val.monitor });
+			toast(r.existed ? `${esc(x.title)} war schon da` : `${esc(x.title)} hinzugefügt – ${appOf(x)} sucht …`);
+			x.have = true;
+			x.id = r.id;
+			ADD.open = null;
+			await loadLib(true);
+			drawResults();
 		} catch (err) {
 			toast(esc(err.message), true);
+			b.classList.remove("busy");
+			b.textContent = `${x.type === "movie" ? "Film" : "Serie"} hinzufügen`;
 		}
-	};
-	$("[data-run]", m.el).onclick = async (e) => {
-		e.currentTarget.classList.add("busy");
-		try {
-			await api("POST", "/api/auto", collect());
-			const res = await api("POST", "/api/auto/run");
-			const bad = res.done.filter((x) => !x.ok).length;
-			toast(res.done.length ? `${res.done.length - bad} erledigt${bad ? `, ${bad} fehlgeschlagen` : ""}` : "Nichts zu tun", bad > 0);
-			m.close();
-			await Promise.all([loadLib(true), loadTor()]);
-		} catch (err) {
-			toast(esc(err.message), true);
-			e.currentTarget.classList.remove("busy");
-		}
-	};
+	}));
+	failedPosters(box);
 }
 
 // ---------- settings ----------
