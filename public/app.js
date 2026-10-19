@@ -199,7 +199,8 @@ function render() {
 
 function drawSide() {
 	const loading = torrents().filter((t) => LOADING.includes(t.state) && t.state !== "paused").length;
-	const tidy = suggestions().length;
+	// only space that's really wasted counts: second copies and torrents nobody needs
+	const tidy = suggestions().filter((g) => g.key === "dup" || g.key === "stale").reduce((n, g) => n + g.list.length, 0);
 	const a = (k, ic, label, cnt, cls = "") => `<a class="${S.page === k ? "on" : ""} ${cls}" data-p="${k}">${icon(ic)}<span>${label}</span>${cnt ? `<span class="cnt">${cnt}</span>` : ""}</a>`;
 	const html =
 		a("lib", "lib", "Bibliothek") +
