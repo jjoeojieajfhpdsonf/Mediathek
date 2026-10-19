@@ -1052,6 +1052,37 @@ function autoPage(d) {
 }
 
 // ---------- the add page: search through Radarr and Sonarr, add right there ----------
+
+// right after adding: did the first search find something it takes? If not, say why and offer another language
+async function checkAdded(x) {
+	x.check = { busy: true };
+	drawResults();
+	await sleep(3000);
+	try {
+		const d = await api("GET", `/api/items/${x.id}/releases${x.type === "series" ? "?season=1" : ""}`);
+		const ok = d.releases.filter((r) => !r.rejected);
+		const lang = d.releases.filter((r) => r.rejected && r.reasons.some((m) => /is wanted, but found|language/i.test(m)));
+		x.releases = d.releases;
+		x.check = { total: d.releases.length, ok: ok.length, lang: lang.length };
+	} catch (err) {
+		x.check = { error: err.message };
+	}
+	if (S.page === "add") drawResults();
+	await Promise.all([loadTor(), loadLib(true)]);
+}
+
+function addCheckHtml(x) {
+	const c = x.check;
+	const i = (ADD.results || []).indexOf(x);
+	const l = LANG_NAME[x.lang] || "der gewählten Sprache";
+	if (c.busy) return `<div class="addcheck">Schaut nach, was ${appOf(x)} findet …</div>`;
+	if (c.error) return `<div class="addcheck bad">${esc(c.error)}</div>`;
+	if (c.ok) return `<div class="addcheck good">✓ ${c.ok} passende ${c.ok === 1 ? "Release" : "Releases"} – ${appOf(x)} lädt den besten, er erscheint gleich unter Aktivität.</div>`;
+	if (!c.total) return `<div class="addcheck">Die Suche findet gerade nichts. ${appOf(x)} sucht regelmässig weiter.</div>`;
+	const others = ["orig", "en", "de"].filter((k) => k !== x.lang);
+	return `<div class="addcheck warn"><div>${c.total} gefunden, aber ${c.lang >= c.total ? "keiner" : "keiner passend"} auf ${l}${c.lang ? " – deine Indexer haben vor allem englische Releases" : ""}.</div>
+		<div class="relacts">${others.map((k) => `<button class="abtn primary" data-relang="${k}" data-i="${i}">Auf ${LANG_NAME[k]} laden</button>`).join("")}<button class="abtn" data-pick="${x.id}" data-i="${i}">Selbst wählen</button></div></div>`;
+}
 const ADD = { q: "", results: null, busy: false, timer: null, seq: 0, open: null };
 
 function drawAdd() {
@@ -1101,6 +1132,7 @@ function drawResults() {
 		return `<div class="result ${ADD.open === x.key ? "open" : ""}" data-r="${i}">${posterHtml(x)}<div class="grow"><h2>${esc(x.title)}<span>${x.year ? `(${x.year})` : ""}</span></h2>
 			<div class="meta">${typeTag(x)}${x.rating ? `<span class="label">★ ${x.rating}</span>` : ""}${x.runtime ? `<span class="label">${runtime(x.runtime)}</span>` : ""}${x.seasons ? `<span class="label">${x.seasons} ${x.seasons === 1 ? "Staffel" : "Staffeln"}</span>` : ""}${x.have ? `<span class="label ok">${mine ? "In der Bibliothek" : `Schon in ${appOf(x)}`}</span>` : ""}</div>
 			<div class="ov">${esc(x.about || "")}</div>
+			${x.check ? addCheckHtml(x) : ""}
 			${x.have ? (mine ? `<div class="form" style="display:flex"><button class="abtn" data-open="${x.id}">Öffnen</button></div>` : "") : `<div class="form"><label>Sprache<select data-k="lang">${opt("de", last.lang, "Deutsch")}${opt("en", last.lang, "Englisch")}${opt("orig", last.lang, "Original")}</select></label><label>Qualität<select data-k="quality">${opt("720p", last.quality, "720p")}${opt("1080p", last.quality, "1080p")}${opt("4k", last.quality, "4K")}</select></label>${x.type === "series" ? `<label>Laden<select data-k="monitor">${opt("all", last.monitor, "Alle Staffeln")}${opt("first", last.monitor, "Nur Staffel 1")}${opt("future", last.monitor, "Nur Neue")}</select></label>` : ""}<button class="abtn primary" data-add="${i}">${x.type === "movie" ? "Film" : "Serie"} hinzufügen</button></div>`}
 			</div></div>`;
 	}).join("") || `<div class="empty-h">${ADD.busy ? "Sucht in Radarr und Sonarr …" : "Nichts gefunden"}</div>`;
@@ -1112,6 +1144,23 @@ function drawResults() {
 		box.querySelectorAll(".result").forEach((o) => o.classList.toggle("open", o === r && ADD.open === x.key));
 	}));
 	box.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openDetail(b.dataset.open)));
+	box.querySelectorAll("[data-relang]").forEach((b) => (b.onclick = async (e) => {
+		e.stopPropagation();
+		const x = list[Number(b.dataset.i)];
+		b.classList.add("busy");
+		try {
+			await api("POST", `/api/items/${x.id}/reprofile`, { lang: b.dataset.relang, quality: x.quality || "1080p" });
+			x.lang = b.dataset.relang;
+			LS.set("add", { ...LS.get("add", {}), lang: b.dataset.relang });
+			toast(`${appOf(x)} sucht auf ${LANG_NAME[b.dataset.relang]} …`);
+			await sleep(5000);
+			checkAdded(x);
+		} catch (err) {
+			toast(esc(err.message), true);
+			b.classList.remove("busy");
+		}
+	}));
+	box.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = (e) => (e.stopPropagation(), releasesSheet(itemById(b.dataset.pick) || list[Number(b.dataset.i)], list[Number(b.dataset.i)].releases || []))));
 	box.querySelectorAll("[data-add]").forEach((b) => (b.onclick = async () => {
 		const x = list[Number(b.dataset.add)];
 		const form = b.closest(".form");
@@ -1125,9 +1174,12 @@ function drawResults() {
 			toast(r.existed ? `${esc(x.title)} war schon da` : `${esc(x.title)} hinzugefügt – ${appOf(x)} sucht …`);
 			x.have = true;
 			x.id = r.id;
+			x.lang = val.lang;
+			x.quality = val.quality;
 			ADD.open = null;
 			await loadLib(true);
 			drawResults();
+			if (!r.existed) checkAdded(x);
 		} catch (err) {
 			toast(esc(err.message), true);
 			b.classList.remove("busy");

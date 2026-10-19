@@ -399,3 +399,10 @@ html, body { background: var(--bg); }
 	.hd .logo { width: auto; }
 	.hsearch span { display: none; }
 }
+
+/* after adding: what the first search found */
+.addcheck { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--card-2); font-size: 13px; color: var(--muted); cursor: default; }
+.addcheck.good { color: var(--ok); background: rgba(95, 211, 154, .08); }
+.addcheck.warn { color: #e9c27a; background: rgba(245, 184, 61, .08); }
+.addcheck.bad { color: #ff9c9c; background: rgba(255, 107, 107, .08); }
+.addcheck .relacts { margin-top: 10px; }
