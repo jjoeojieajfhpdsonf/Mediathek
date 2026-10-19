@@ -230,6 +230,12 @@ async function loadLib(fresh) {
 		return;
 	}
 	drawErrors(S.lib.errors);
+	// a new version on the server: reload when nothing is open, else say so
+	if (S.lib.build && S.state.build && S.lib.build !== S.state.build) {
+		const busy = document.querySelector(".scrim") || !$("#spot").hidden || $("#drawer").classList.contains("open");
+		if (!busy) return location.reload();
+		if (!S.newBuild) (S.newBuild = true), toast(`Neue Version da – <a href="#" onclick="location.reload();return false" style="text-decoration:underline">neu laden</a>`);
+	}
 	if (["lib", "clean"].includes(S.page)) render();
 	else drawSide();
 	if (S.open) openDetail(S.open, true);

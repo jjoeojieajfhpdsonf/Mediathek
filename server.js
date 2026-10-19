@@ -21,6 +21,8 @@ const PUBLIC = path.join(__dirname, "public");
 const PASSWORD = process.env.PASSWORD || "";
 const DEMO = process.env.DEMO === "1";
 const VERSION = require("./package.json").version;
+// changes with every update of the page's files – an open page sees it and reloads
+const BUILD = crypto.createHash("sha1").update(["app.js", "style.css", "index.html"].map((f) => { try { return fs.readFileSync(path.join(PUBLIC, f)); } catch { return ""; } }).join("|")).digest("hex").slice(0, 10);
 
 const config = new Config(DATA_DIR);
 const media = new Media({}, { downloadsMap: config.downloadsMap() });
@@ -53,8 +55,8 @@ const routes = [];
 const route = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, "(?<$1>[^/]+)")}$`), fn });
 class UserError extends Error {}
 
-route("GET", "/api/state", () => ({ version: VERSION, demo: DEMO, auth: !!PASSWORD, services: media.services(), auto: auto.rules().enabled, keep: [...auto.keep()] }));
-route("GET", "/api/library", (b, p, q) => media.library(q.get("fresh") === "1"));
+route("GET", "/api/state", () => ({ version: VERSION, build: BUILD, demo: DEMO, auth: !!PASSWORD, services: media.services(), auto: auto.rules().enabled, keep: [...auto.keep()] }));
+route("GET", "/api/library", async (b, p, q) => ({ ...(await media.library(q.get("fresh") === "1")), build: BUILD }));
 route("GET", "/api/torrents", () => media.torrents());
 route("GET", "/api/torrents/:hash", (b, p) => media.torrentDetails(hash(p.hash)));
 route("POST", "/api/torrents/:hash/:action", async (b, p) => {
