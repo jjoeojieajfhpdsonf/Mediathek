@@ -176,7 +176,7 @@ function shell() {
 const PAGES = { lib: drawLibrary, add: drawAdd, activity: drawActivity, clean: drawClean, auto: drawAuto };
 
 function go(page) {
-	if (S.page !== page) window.scrollTo(0, 0);
+	if (S.page !== page) window.scrollTo(0, 0), closeDetail();
 	S.page = page;
 	LS.set("page", page);
 	if (location.hash.slice(1) !== page) history.replaceState(null, "", `#${page}`);
@@ -286,7 +286,7 @@ function drawClean() {
 	const other = sp && sp.total ? Math.max(0, sp.total - sp.free - movies - series - dup) : 0;
 	const w = (n) => (sp && sp.total ? `${(n / sp.total) * 100}%` : "0");
 	const sugg = suggestions();
-	const titleRow = (x) => `<tr data-id="${x.id}" style="cursor:pointer"><td style="width:42px">${posterHtml(x)}</td><td><div>${esc(x.title)}</div><div class="sm faint">${[x.year, x.type === "movie" ? "Film" : "Serie", x.lastPlayed ? `gesehen ${ago(x.lastPlayed)}` : `da ${ago(x.added)}`].filter(Boolean).join(" · ")}</div></td><td class="num" style="text-align:right">${bytes(freedBy(x))}</td><td style="width:1%"><button class="ic-btn" data-del="${x.id}" title="Überall löschen">${icon("trash", 15)}</button></td></tr>`;
+	const titleRow = (x) => `<tr data-id="${x.id}" style="cursor:pointer"><td style="width:42px">${posterHtml(x)}</td><td><div>${esc(x.title)}</div><div class="sm faint">${[x.year, x.type === "movie" ? "Film" : "Serie", x.watched >= 1 && x.lastPlayed ? `gesehen ${ago(x.lastPlayed)}` : `da ${ago(x.added)}`].filter(Boolean).join(" · ")}</div></td><td class="num" style="text-align:right">${bytes(freedBy(x))}</td><td style="width:1%"><button class="ic-btn" data-del="${x.id}" title="Überall löschen">${icon("trash", 15)}</button></td></tr>`;
 	const html = `<div class="page-h"><h1>Aufräumen</h1></div>
 		<div class="box2"><h3>Speicher</h3>
 			<div class="space"><div><b class="num">${sp ? bytes(sp.free) : "–"}</b><span class="faint"> frei${sp && sp.total ? ` von ${bytes(sp.total)}` : ""}</span></div></div>
@@ -519,6 +519,27 @@ const profileParts = (name) => {
 	return m ? { quality: m[1] === "4K" ? "4k" : m[1], lang: LANG_OF[m[2]] } : null;
 };
 
+// What a search result means: is anything taken, and if not – is the language there at all, maybe
+// only in another quality? Gives a sentence and the buttons that would help.
+const LANG_EN = { de: "German", en: "English" };
+const QNAME = { "4k": "4K", "1080p": "1080p", "720p": "720p" };
+const qualityKey = (name) => (/2160|4k|uhd/i.test(name || "") ? "4k" : /1080/.test(name || "") ? "1080p" : /720/.test(name || "") ? "720p" : null);
+function summarize(d, cur, x) {
+	const list = d.releases;
+	const ok = list.filter((r) => !r.rejected);
+	const want = cur ? LANG_EN[cur.lang] : null;
+	const lname = cur ? LANG_NAME[cur.lang] : "der gewünschten Sprache";
+	const inLang = want ? list.filter((r) => r.languages.includes(want)) : [];
+	const qs = [...new Set(inLang.map((r) => qualityKey(r.quality)).filter((q) => q && (!cur || q !== cur.quality)))].sort((a, b) => ["1080p", "4k", "720p"].indexOf(a) - ["1080p", "4k", "720p"].indexOf(b));
+	const langs = cur ? ["orig", "en", "de"].filter((l) => l !== cur.lang) : ["orig", "en"];
+	if (!list.length) return { kind: "", msg: `Die Suche findet gerade nichts. ${appOf(x)} sucht regelmässig weiter.`, acts: [] };
+	if (ok.length) return { kind: "good", msg: `${ok.length} passende ${ok.length === 1 ? "Release" : "Releases"} – ${appOf(x)} lädt den besten, er erscheint gleich unter Aktivität.`, acts: [{ all: true }] };
+	if (inLang.length && qs.length)
+		return { kind: "warn", msg: `Auf ${lname} gibt es ${x.title ? esc(x.title) : "ihn"} nur in ${qs.map((q) => QNAME[q]).join(" oder ")} (${inLang.length} ${inLang.length === 1 ? "Release" : "Releases"}).`, acts: [...qs.map((q) => ({ quality: q, label: `In ${QNAME[q]} laden` })), ...langs.slice(0, 1).map((l) => ({ lang: l })), { all: true }] };
+	if (inLang.length) return { kind: "warn", msg: `${inLang.length} auf ${lname} gefunden, aber alle vom Profil abgelehnt – wähle selbst einen aus.`, acts: [{ all: true }, ...langs.map((l) => ({ lang: l }))] };
+	return { kind: "warn", msg: `${list.length} gefunden, aber keiner auf ${lname}.`, acts: [...langs.map((l) => ({ lang: l })), { all: true }] };
+}
+
 // asks Radarr/Sonarr what a search finds right now and says why nothing was loaded
 async function loadReleases(x) {
 	const box = $("#relWrap");
@@ -534,18 +555,23 @@ async function loadReleases(x) {
 		return;
 	}
 	if (S.open !== x.id || $("#relWrap") !== box) return;
-	const ok = d.releases.filter((r) => !r.rejected);
-	const lang = d.releases.filter((r) => r.rejected && r.reasons.some((m) => /is wanted, but found|language/i.test(m)));
 	const cur = profileParts(d.profile);
-	const wanted = cur ? LANG_NAME[cur.lang] : null;
-	let msg;
-	if (!d.releases.length) msg = `Die Suche findet gerade nichts. ${appOf(x)} sucht regelmässig weiter.`;
-	else if (ok.length) msg = `${ok.length} passende ${ok.length === 1 ? "Release" : "Releases"} – ${appOf(x)} lädt den besten, sobald er an der Reihe ist. Du kannst auch selbst einen wählen.`;
-	else if (lang.length) msg = `${d.releases.length} gefunden, aber ${lang.length === d.releases.length ? "keiner" : "kaum einer"} ${wanted ? `auf ${wanted}` : "in der gewünschten Sprache"}. Deine Indexer haben vor allem englische Releases.`;
-	else msg = `${d.releases.length} gefunden, aber keiner passt zum Profil${d.profile ? ` «${esc(d.profile)}»` : ""}.`;
-	const other = cur ? ["orig", "en", "de"].filter((l) => l !== cur.lang) : ["orig", "en"];
-	box.innerHTML = `${head}<div class="relbox"><div class="sm" style="line-height:1.5">${msg}</div>
-		<div class="relacts">${!ok.length && d.releases.length ? other.map((l) => `<button class="btn small" data-lang="${l}">Auf ${LANG_NAME[l]} suchen</button>`).join("") : ""}${d.releases.length ? `<button class="btn small" data-all>Alle ${d.releases.length} ansehen</button>` : ""}</div></div>`;
+	const sum = summarize(d, cur, x);
+	box.innerHTML = `${head}<div class="relbox ${sum.kind}"><div class="sm" style="line-height:1.5">${sum.msg}</div>
+		<div class="relacts">${sum.acts.map((a) => (a.all ? `<button class="btn small" data-all>Alle ${d.releases.length} ansehen</button>` : a.quality ? `<button class="btn small primary" data-q="${a.quality}">${a.label}</button>` : `<button class="btn small" data-lang="${a.lang}">Auf ${LANG_NAME[a.lang]} suchen</button>`)).join("")}</div></div>`;
+	box.querySelectorAll("[data-q]").forEach((b) => (b.onclick = async () => {
+		b.classList.add("busy");
+		try {
+			const r = await api("POST", `/api/items/${x.id}/reprofile`, { lang: cur ? cur.lang : "de", quality: b.dataset.q });
+			toast(`Profil «${esc(r.profile)}» – ${appOf(x)} sucht neu`);
+			await sleep(4000);
+			await Promise.all([loadLib(true), loadTor()]);
+			loadReleases(x);
+		} catch (err) {
+			toast(esc(err.message), true);
+			b.classList.remove("busy");
+		}
+	}));
 	box.querySelectorAll("[data-lang]").forEach((b) => (b.onclick = async () => {
 		b.classList.add("busy");
 		try {
@@ -560,7 +586,7 @@ async function loadReleases(x) {
 		}
 	}));
 	const all = $("[data-all]", box);
-	if (all) all.onclick = () => releasesSheet(x, d.releases);
+	if (all) all.onclick = () => releasesSheet(x, d.releases, cur && LANG_EN[cur.lang]);
 }
 
 // Radarr's and Sonarr's reasons, in German where they're common
@@ -580,7 +606,8 @@ function reasonDe(r) {
 }
 
 // every release the search found, the rejected ones with the reason – any can be loaded
-function releasesSheet(x, list) {
+function releasesSheet(x, list, want) {
+	if (want) list = [...list].sort((a, b) => b.languages.includes(want) - a.languages.includes(want) || a.rejected - b.rejected || (b.seeders || 0) - (a.seeders || 0));
 	const age = (d) => (d === null || d === undefined ? "" : d < 1 ? "heute" : d < 60 ? `${Math.round(d)} Tage` : `${Math.round(d / 30)} Mon.`);
 	const m = modal(`<h3>${esc(x.title)} – Releases</h3><div class="sm muted" style="margin:6px 0 12px">Was ${appOf(x)} gerade findet. Abgelehnte kannst du trotzdem laden.</div>
 		<div class="rels">${list.map((r, i) => `<div class="rel ${r.rejected ? "rej" : ""}"><div class="grow"><div class="t">${esc(r.title)}</div>
@@ -1060,10 +1087,8 @@ async function checkAdded(x) {
 	await sleep(3000);
 	try {
 		const d = await api("GET", `/api/items/${x.id}/releases${x.type === "series" ? "?season=1" : ""}`);
-		const ok = d.releases.filter((r) => !r.rejected);
-		const lang = d.releases.filter((r) => r.rejected && r.reasons.some((m) => /is wanted, but found|language/i.test(m)));
 		x.releases = d.releases;
-		x.check = { total: d.releases.length, ok: ok.length, lang: lang.length };
+		x.check = { sum: summarize(d, { lang: x.lang, quality: x.quality }, x) };
 	} catch (err) {
 		x.check = { error: err.message };
 	}
@@ -1074,14 +1099,11 @@ async function checkAdded(x) {
 function addCheckHtml(x) {
 	const c = x.check;
 	const i = (ADD.results || []).indexOf(x);
-	const l = LANG_NAME[x.lang] || "der gewählten Sprache";
 	if (c.busy) return `<div class="addcheck">Schaut nach, was ${appOf(x)} findet …</div>`;
 	if (c.error) return `<div class="addcheck bad">${esc(c.error)}</div>`;
-	if (c.ok) return `<div class="addcheck good">✓ ${c.ok} passende ${c.ok === 1 ? "Release" : "Releases"} – ${appOf(x)} lädt den besten, er erscheint gleich unter Aktivität.</div>`;
-	if (!c.total) return `<div class="addcheck">Die Suche findet gerade nichts. ${appOf(x)} sucht regelmässig weiter.</div>`;
-	const others = ["orig", "en", "de"].filter((k) => k !== x.lang);
-	return `<div class="addcheck warn"><div>${c.total} gefunden, aber ${c.lang >= c.total ? "keiner" : "keiner passend"} auf ${l}${c.lang ? " – deine Indexer haben vor allem englische Releases" : ""}.</div>
-		<div class="relacts">${others.map((k) => `<button class="abtn primary" data-relang="${k}" data-i="${i}">Auf ${LANG_NAME[k]} laden</button>`).join("")}<button class="abtn" data-pick="${x.id}" data-i="${i}">Selbst wählen</button></div></div>`;
+	const sum = c.sum;
+	const acts = sum.acts.filter((a) => !(sum.kind === "good" && a.all));
+	return `<div class="addcheck ${sum.kind}"><div>${sum.kind === "good" ? "✓ " : ""}${sum.msg}</div>${acts.length ? `<div class="relacts">${acts.map((a) => (a.all ? `<button class="abtn" data-pick="${x.id}" data-i="${i}">Selbst wählen</button>` : a.quality ? `<button class="abtn primary" data-reqal="${a.quality}" data-i="${i}">${a.label}</button>` : `<button class="abtn ${sum.acts[0] === a ? "primary" : ""}" data-relang="${a.lang}" data-i="${i}">Auf ${LANG_NAME[a.lang]} laden</button>`)).join("")}</div>` : ""}</div>`;
 }
 const ADD = { q: "", results: null, busy: false, timer: null, seq: 0, open: null };
 
@@ -1160,7 +1182,22 @@ function drawResults() {
 			b.classList.remove("busy");
 		}
 	}));
-	box.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = (e) => (e.stopPropagation(), releasesSheet(itemById(b.dataset.pick) || list[Number(b.dataset.i)], list[Number(b.dataset.i)].releases || []))));
+	box.querySelectorAll("[data-reqal]").forEach((b) => (b.onclick = async (e) => {
+		e.stopPropagation();
+		const x = list[Number(b.dataset.i)];
+		b.classList.add("busy");
+		try {
+			await api("POST", `/api/items/${x.id}/reprofile`, { lang: x.lang || "de", quality: b.dataset.reqal });
+			x.quality = b.dataset.reqal;
+			toast(`${appOf(x)} sucht in ${QNAME[b.dataset.reqal]} …`);
+			await sleep(5000);
+			checkAdded(x);
+		} catch (err) {
+			toast(esc(err.message), true);
+			b.classList.remove("busy");
+		}
+	}));
+	box.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = (e) => (e.stopPropagation(), releasesSheet(itemById(b.dataset.pick) || list[Number(b.dataset.i)], list[Number(b.dataset.i)].releases || [], LANG_EN[list[Number(b.dataset.i)].lang]))));
 	box.querySelectorAll("[data-add]").forEach((b) => (b.onclick = async () => {
 		const x = list[Number(b.dataset.add)];
 		const form = b.closest(".form");

@@ -406,3 +406,6 @@ html, body { background: var(--bg); }
 .addcheck.warn { color: #e9c27a; background: rgba(245, 184, 61, .08); }
 .addcheck.bad { color: #ff9c9c; background: rgba(255, 107, 107, .08); }
 .addcheck .relacts { margin-top: 10px; }
+
+.relbox.good { background: rgba(95, 211, 154, .08); color: var(--ok); }
+.relbox.warn { background: rgba(245, 184, 61, .08); color: #e9c27a; }
